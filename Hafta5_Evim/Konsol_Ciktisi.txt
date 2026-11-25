@@ -1,0 +1,12 @@
+Ev adresi    : Atatürk Mah. Cumhuriyet Cad. No:23 Daire:5, Merkez / Muş
+
+--- EV ÜYELERİ ---
+Anne - Öğretmen - 56 yaşında
+Baba - Mühendis - 58 yaşında
+Ben - Öğrenci - 22 yaşında
+Dede - Emekli - 81 yaşında
+Kardeş - Belirtilmedi - 14 yaşında
+
+Ortalama yaş : 46,2
+En yaşlı     : Dede (81 yaşında)
+Toplam kişi  : 5
