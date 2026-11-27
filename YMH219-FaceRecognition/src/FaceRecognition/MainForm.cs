@@ -38,9 +38,12 @@ public partial class MainForm : Form
     private void MainForm_Load(object? sender, EventArgs e)
     {
         string cascade = Path.Combine(AppContext.BaseDirectory, "Models", "haarcascade_frontalface_default.xml");
+        string yunet = Path.Combine(AppContext.BaseDirectory, "Models", "face_detection_yunet_2023mar.onnx");
         try
         {
-            _goruntu = new GoruntuServisi(cascade) { Esik = (double)nudEsik.Value };
+            _goruntu = new GoruntuServisi(cascade, yunet) { Esik = (double)nudEsik.Value };
+            AlgilayiciSeciminiKur();
+            OtomatikToplamaKur();
         }
         catch (Exception ex) when (ex is FileNotFoundException or InvalidDataException or OpenCVException or TypeInitializationException or DllNotFoundException)
         {
@@ -53,6 +56,36 @@ public partial class MainForm : Form
         EtiketListesiniYenile();
         if (_depo.EgitimHatasi() is null)
             ModeliEgit(sessiz: true); // önceki oturumdan kalan örneklerle otomatik eğit
+    }
+
+    // ------------------------------------------------------------ Algılayıcı seçimi
+
+    private readonly ComboBox cmbAlgilayici = new() { DropDownStyle = ComboBoxStyle.DropDownList, Name = "cmbAlgilayici" };
+
+    private void AlgilayiciSeciminiKur()
+    {
+        grpKaynak.Height += 34;
+        var lbl = new Label { Text = "Algılayıcı:", AutoSize = true, Location = new System.Drawing.Point(10, 103) };
+        cmbAlgilayici.Location = new System.Drawing.Point(80, 99);
+        cmbAlgilayici.Width = 194;
+        cmbAlgilayici.Items.AddRange(new object[] { "YuNet (DNN, önerilen)", "Haar Cascade (klasik)" });
+        cmbAlgilayici.SelectedIndex = _goruntu!.Algilayici == AlgilayiciTuru.YuNet ? 0 : 1;
+        cmbAlgilayici.Enabled = _goruntu.YuNetKullanilabilir;
+        cmbAlgilayici.SelectedIndexChanged += (_, _) =>
+        {
+            _goruntu.Algilayici = cmbAlgilayici.SelectedIndex == 0 ? AlgilayiciTuru.YuNet : AlgilayiciTuru.Haar;
+            lblDurum.Text = $"Yüz algılayıcı: {cmbAlgilayici.SelectedItem}";
+            if (_sonKare is not null && !_kamera.Calisiyor)
+            {
+                using var kopya = _sonKare.Clone();
+                _kareIsleniyor = true;
+                KareyiIsleVeGoster(kopya);   // açık fotoğrafı yeni algılayıcıyla yeniden işle
+            }
+        };
+        grpKaynak.Controls.Add(lbl);
+        grpKaynak.Controls.Add(cmbAlgilayici);
+        if (!_goruntu.YuNetKullanilabilir)
+            lblDurum.Text = "YuNet modeli bulunamadı; Haar Cascade kullanılıyor.";
     }
 
     // ------------------------------------------------------------ Görüntü kaynağı
@@ -143,6 +176,7 @@ public partial class MainForm : Form
         using var cizim = kare.Clone();
         GoruntuServisi.Ciz(cizim, yuzler);
         var bitmap = cizim.ToBitmap();
+        GoruntuServisi.EtiketleriCiz(bitmap, yuzler);   // Türkçe karakterli etiketler
 
         lock (_kareKilidi)
         {
@@ -221,7 +255,9 @@ public partial class MainForm : Form
             var enBuyuk = yuzler.OrderByDescending(y => y.Bolge.Width * y.Bolge.Height).First();
             try
             {
-                using var hazir = GoruntuServisi.YuzuHazirla(kare, enBuyuk.Bolge);
+                using var hazir = enBuyuk.Kaynak is YuzBolgesi kaynak
+                    ? GoruntuServisi.YuzuHazirla(kare, kaynak)       // göz noktalarıyla hizalı
+                    : GoruntuServisi.YuzuHazirla(kare, enBuyuk.Bolge);
                 int adet = GoruntuServisi.OrnekKaydet(_depo, txtEtiket.Text, hazir, chkVeriArtirma.Checked);
                 lblDurum.Text = $"'{txtEtiket.Text.Trim()}' etiketine {adet} örnek eklendi. Tanıma için 'Modeli Eğit'e basın.";
             }
@@ -231,6 +267,90 @@ public partial class MainForm : Form
             }
         }
         EtiketListesiniYenile();
+    }
+
+    // ------------------------------------------------------------ Otomatik örnek toplama
+
+    private readonly System.Windows.Forms.Timer _toplamaZamanlayici = new() { Interval = 400 };
+    private Button btnOtomatikTopla = null!;
+    private int _toplanacak, _toplanan;
+    private const int OtomatikOrnekSayisi = 10;
+
+    /// <summary>
+    /// Kamera açıkken 0,4 sn arayla 10 örnek toplar (karede tam bir yüz varken). Kullanıcı bu sırada başını
+    /// hafifçe çevirip ifadesini değiştirdiğinde LBPH farklı görünümleri öğrenir; az örnek sorunu büyük ölçüde azalır.
+    /// </summary>
+    private void OtomatikToplamaKur()
+    {
+        btnOrnekEkle.Width = 170;
+        btnOrnekEkle.Text = "Yüzü Örnek Olarak Ekle";
+        btnOtomatikTopla = new Button
+        {
+            Name = "btnOtomatikTopla", Text = $"Otomatik ×{OtomatikOrnekSayisi}",
+            Location = new System.Drawing.Point(btnOrnekEkle.Right + 6, btnOrnekEkle.Top),
+            Size = new System.Drawing.Size(274 - btnOrnekEkle.Right - 6 + 10 - 10, btnOrnekEkle.Height)
+        };
+        btnOtomatikTopla.Click += BtnOtomatikTopla_Click;
+        grpEgitim.Controls.Add(btnOtomatikTopla);
+        _toplamaZamanlayici.Tick += (_, _) => OtomatikOrnekAl();
+    }
+
+    private void BtnOtomatikTopla_Click(object? sender, EventArgs e)
+    {
+        if (_toplamaZamanlayici.Enabled) { OtomatikToplamayiBitir("Otomatik toplama durduruldu."); return; }
+        string? hata = EtiketKurallari.Hata(txtEtiket.Text);
+        if (hata is not null) { MessageBox.Show(this, hata, "Geçersiz etiket", MessageBoxButtons.OK, MessageBoxIcon.Information); return; }
+        if (!_kamera.Calisiyor)
+        {
+            MessageBox.Show(this, "Otomatik toplama için önce kamerayı başlatın.", "Kamera kapalı", MessageBoxButtons.OK, MessageBoxIcon.Information);
+            return;
+        }
+        _toplanacak = OtomatikOrnekSayisi;
+        _toplanan = 0;
+        btnOtomatikTopla.Text = "Durdur";
+        lblDurum.Text = "Otomatik toplama: başınızı hafifçe sağa-sola çevirin, ifadenizi değiştirin...";
+        _toplamaZamanlayici.Start();
+    }
+
+    private void OtomatikOrnekAl()
+    {
+        Mat? kare; List<AlgilananYuz> yuzler;
+        lock (_kareKilidi) { kare = _sonKare?.Clone(); yuzler = _sonYuzler; }
+        using (kare)
+        {
+            if (kare is null || yuzler.Count != 1)
+            {
+                lblDurum.Text = $"Otomatik toplama: karede tam olarak bir yüz olmalı ({_toplanan}/{_toplanacak})";
+                return;
+            }
+            try
+            {
+                var y = yuzler[0];
+                using var hazir = y.Kaynak is YuzBolgesi k ? GoruntuServisi.YuzuHazirla(kare, k) : GoruntuServisi.YuzuHazirla(kare, y.Bolge);
+                // Veri artırma her 3 örnekte bir: hem çeşitlilik hem makul dosya sayısı
+                GoruntuServisi.OrnekKaydet(_depo, txtEtiket.Text, hazir, chkVeriArtirma.Checked && _toplanan % 3 == 0);
+                _toplanan++;
+                lblDurum.Text = $"Otomatik toplama: {_toplanan}/{_toplanacak} örnek";
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or OpenCVException)
+            {
+                OtomatikToplamayiBitir("Örnek kaydedilemedi: " + ex.Message);
+                return;
+            }
+        }
+        if (_toplanan >= _toplanacak)
+        {
+            OtomatikToplamayiBitir($"'{txtEtiket.Text.Trim()}' için {_toplanan} örnek toplandı; model yeniden eğitiliyor...");
+            if (_depo.EgitimHatasi() is null) ModeliEgit(sessiz: true);
+        }
+    }
+
+    private void OtomatikToplamayiBitir(string mesaj)
+    {
+        _toplamaZamanlayici.Stop();
+        btnOtomatikTopla.Text = $"Otomatik ×{OtomatikOrnekSayisi}";
+        EtiketListesiniYenile();
+        lblDurum.Text = mesaj;
     }
 
     private void BtnEgit_Click(object? sender, EventArgs e) => ModeliEgit(sessiz: false);
@@ -244,7 +364,15 @@ public partial class MainForm : Form
             Cursor = Cursors.WaitCursor;
             int adet = _goruntu.Egit(_depo);
             lblModel.Text = $"Model: {_goruntu.ModeldekiEtiketler.Count} etiket, {adet} örnek";
-            lblDurum.Text = "Model eğitildi. Kamera veya görüntü ile tanıma yapılabilir.";
+            if (_goruntu.Kalibrasyon is MesafeKalibrasyonu k)
+            {
+                // Önerilen eşik çapraz doğrulamadan gelir; kullanıcı yine elle değiştirebilir
+                nudEsik.Value = Math.Clamp((decimal)Math.Round(k.Esik), nudEsik.Minimum, nudEsik.Maximum);
+                lblDurum.Text = $"Model eğitildi ve kalibre edildi: {k.Ozet()}. Eşik otomatik ayarlandı.";
+                lblModel.Text += $" · kalibre eşik {k.Esik:0}";
+            }
+            else
+                lblDurum.Text = "Model eğitildi. (Kalibrasyon için en az 2 kişi ve kişi başı 5+ örnek gerekir.)";
         }
         catch (Exception ex) when (ex is InvalidOperationException or OpenCVException)
         {

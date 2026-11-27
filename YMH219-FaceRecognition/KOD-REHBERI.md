@@ -3,13 +3,13 @@
 ## İşlem hattı (her kare için)
 
 ```
-Mat (BGR) ─► GriyeCevir + EqualizeHist ─► CascadeClassifier.DetectMultiScale ─► Rect[] (yüzler)
+Mat (BGR) ─► YuNet (FaceDetectorYN) veya Haar ─► YuzBolgesi[] (kutu + göz noktaları)
                                                     │
-         her yüz için: YuzuHazirla (kırp, gri, 100x100, EqualizeHist)
+         her yüz için: YuzuHazirla (göz hizalama veya kırpma, gri, 100x100, CLAHE)
                                                     │
                      LBPHFaceRecognizer.Predict ─► (etiket Id, mesafe)
                                                     │
-                TanimaKarari.Olustur(etiket, mesafe, eşik) ─► Ciz ─► Bitmap ─► PictureBox
+     TanimaKarari.Olustur(etiket, mesafe, eşik, kalibrasyon) ─► Ciz (çerçeve) ─► Bitmap ─► EtiketleriCiz (GDI+) ─► PictureBox
 ```
 
 ## Sınıflar
@@ -29,6 +29,20 @@ Mat (BGR) ─► GriyeCevir + EqualizeHist ─► CascadeClassifier.DetectMultiS
   `Invoke` (senkron) kullanılmaz, çünkü "Kamera Durdur" UI iş parçacığında görevi beklerken kilitlenme (deadlock) olurdu.
 - `_kareIsleniyor` bayrağı: arayüz önceki kareyi göstermeden yeni kare işlenmez (kare atlama).
 - Eski `pbGoruntu.Image` her yeni karede `Dispose` edilir (bellek sızıntısı önlenir).
+
+## Yeni eklenen özellikler (kod düzeyinde)
+
+- **YuNet — `GoruntuServisi.YuNetIleBul`:** `FaceDetectorYN.Create(onnx, "", boyut, 0.8, 0.3, 5000)`; görüntü en fazla 640 px'e
+  küçültülür, algılayıcı boyuta göre önbelleklenir. Çıktı `Mat` satırı: x, y, w, h, sağ göz, sol göz, burun, ağız (x, y) ve skor.
+  Model yoksa veya `OpenCVException` olursa Haar'a düşülür. Sonuç `YuzBolgesi(Bolge, SolGoz, SagGoz, Skor)`.
+- **Hizalama — `YuzHizalama.Hesapla` (Core):** göz çizgisinin açısı `atan2(dy, dx)`, ölçek = 100·0,40 / göz mesafesi;
+  `GetRotationMatrix2D(gözOrtası, açı, ölçek)` matrisinin öteleme sütununa (hedef − merkez) eklenip tek `WarpAffine` ile
+  100x100 hizalı yüz üretilir (gözler hep (30,36) ve (70,36)'da). Ardından `CLAHE(2.0, 8x8)`.
+- **Kalibrasyon — `MesafeKalibrasyonu` (Core) + `GoruntuServisi.Kalibre`:** her kişi için örnekler 5 ardışık parçaya bölünür;
+  kişinin diğer parçalarıyla eğitilen modelden *gerçek*, yalnızca diğer kişilerle eğitilen modelden *sahte* mesafeler toplanır.
+  Eşik = FAR + FRR'yi en aza indiren değer; güven = 1 / (1 + e^((d − eşik)/eğim)).
+- **Etiket çizimi — `EtiketleriCiz`:** OpenCV yalnızca çerçeveyi çizer; yazılar `Mat.ToBitmap()` sonrasında GDI+ ile yazılır.
+- **Otomatik toplama:** `System.Windows.Forms.Timer` (400 ms) her tikte son kareyi alır; karede tek yüz varsa hizalanmış örneği kaydeder.
 
 ## Olası küçük değişiklik soruları
 

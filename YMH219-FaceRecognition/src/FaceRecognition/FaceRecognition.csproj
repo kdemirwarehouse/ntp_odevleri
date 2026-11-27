@@ -13,6 +13,7 @@
   <ItemGroup>
     <!-- Yüz algılama modeli çıktı klasörüne kopyalanır -->
     <None Update="Models\haarcascade_frontalface_default.xml" CopyToOutputDirectory="PreserveNewest" />
+    <None Update="Models\face_detection_yunet_2023mar.onnx" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
   <PropertyGroup>

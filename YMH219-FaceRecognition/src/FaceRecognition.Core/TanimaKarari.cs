@@ -12,16 +12,18 @@ public readonly record struct TanimaKarari(string Etiket, double Mesafe, int Guv
 
     /// <summary>
     /// Mesafe eşiğin altındaysa kişi tanınmış sayılır; değilse "Bilinmiyor".
-    /// Güven yüzdesi basit bir ölçek: 100 − mesafe (0-100 arasına sınırlanır).
+    /// Kalibrasyon verilirse güven yüzdesi eğitim verisinden ölçülen dağılımlara göre hesaplanır
+    /// (<see cref="MesafeKalibrasyonu"/>); verilmezse basit ölçek kullanılır: 100 − mesafe.
     /// </summary>
-    public static TanimaKarari Olustur(string? tahminEtiketi, double mesafe, double esik = VarsayilanEsik)
+    public static TanimaKarari Olustur(string? tahminEtiketi, double mesafe, double esik = VarsayilanEsik,
+                                       MesafeKalibrasyonu? kalibrasyon = null)
     {
         if (esik <= 0)
             throw new ArgumentOutOfRangeException(nameof(esik), "Eşik pozitif olmalı.");
         if (double.IsNaN(mesafe) || mesafe < 0)
             mesafe = double.MaxValue;
 
-        int guven = (int)Math.Round(Math.Clamp(100 - mesafe, 0, 100));
+        int guven = kalibrasyon?.GuvenYuzde(mesafe) ?? (int)Math.Round(Math.Clamp(100 - mesafe, 0, 100));
         bool taninan = tahminEtiketi is not null && mesafe <= esik;
         return new TanimaKarari(taninan ? tahminEtiketi! : Bilinmiyor, mesafe, guven, taninan, tahminEtiketi);
     }
