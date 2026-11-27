@@ -24,22 +24,30 @@ public class IstemciForm : Form
     private readonly TextBox txtMesaj;
     private readonly Button btnGonder;
     private readonly Button btnGecmisKaydet;
+    private readonly CheckBox chkYenidenBaglan;
+    private readonly TextBox txtParola;
+    private readonly ComboBox cmbOda;
+    private readonly CheckBox chkTls;
+    private readonly Button btnOdaGec;
 
     public IstemciForm(int numara = 1)
     {
         Text = $"Chat İstemcisi #{numara}";
         Font = new Font("Segoe UI", 9.5F);
         StartPosition = FormStartPosition.CenterScreen;
-        ClientSize = new Size(760, 520);
+        ClientSize = new Size(900, 540);
         MinimumSize = new Size(640, 420);
 
         // --- Bağlantı paneli
-        var pnlBaglanti = new FlowLayoutPanel { Dock = DockStyle.Top, Height = 46, Padding = new Padding(8, 10, 8, 0) };
+        var pnlBaglanti = new FlowLayoutPanel { Dock = DockStyle.Top, AutoSize = true, Padding = new Padding(8, 10, 8, 6) };
         txtSunucu = new TextBox { Name = "txtSunucu", Text = "127.0.0.1", Width = 110 };
         nudPort = new NumericUpDown { Name = "nudPort", Minimum = 1, Maximum = 65535, Value = 5000, Width = 70 };
         txtKullanici = new TextBox { Name = "txtKullanici", Width = 110, MaxLength = ChatSunucu.MaksimumKullaniciAdiUzunlugu, PlaceholderText = "kullanıcı adı" };
+        txtParola = new TextBox { Name = "txtParola", Width = 90, UseSystemPasswordChar = true, PlaceholderText = "(yoksa boş)" };
         btnBaglan = new Button { Name = "btnBaglan", Text = "Bağlan", AutoSize = true };
         btnKes = new Button { Name = "btnKes", Text = "Bağlantıyı Kes", AutoSize = true, Enabled = false };
+        chkTls = new CheckBox { Name = "chkTls", Text = "TLS", AutoSize = true, Checked = true, Margin = new Padding(6, 6, 0, 0) };
+        chkYenidenBaglan = new CheckBox { Name = "chkYenidenBaglan", Text = "Otomatik yeniden bağlan", AutoSize = true, Checked = true, Margin = new Padding(8, 6, 0, 0) };
         lblDurum = new Label
         {
             Name = "lblDurum", AutoSize = true, Padding = new Padding(8, 4, 8, 4), Margin = new Padding(10, 0, 0, 0),
@@ -47,7 +55,7 @@ public class IstemciForm : Form
         };
         pnlBaglanti.Controls.AddRange(new Control[]
         {
-            Etiket("Sunucu:"), txtSunucu, Etiket("Port:"), nudPort, Etiket("Ad:"), txtKullanici, btnBaglan, btnKes, lblDurum
+            Etiket("Sunucu:"), txtSunucu, Etiket("Port:"), nudPort, Etiket("Ad:"), txtKullanici, Etiket("Parola:"), txtParola, chkTls, btnBaglan, btnKes, chkYenidenBaglan, lblDurum
         });
 
         // --- Alt panel: mesaj yazma
@@ -73,9 +81,18 @@ public class IstemciForm : Form
             DrawMode = DrawMode.OwnerDrawFixed, ItemHeight = 20, Font = new Font("Segoe UI", 10F)
         };
         lstMesajlar.DrawItem += LstMesajlar_DrawItem;
-        var grpKullanicilar = new GroupBox { Text = "Çevrimiçi", Dock = DockStyle.Fill };
+        var grpKullanicilar = new GroupBox { Name = "grpKullanicilar", Text = "Oda: Genel", Dock = DockStyle.Fill };
         lstKullanicilar = new ListBox { Name = "lstKullanicilar", Dock = DockStyle.Fill, IntegralHeight = false };
+        var pnlOda = new TableLayoutPanel { Dock = DockStyle.Bottom, Height = 34, ColumnCount = 2 };
+        pnlOda.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F));
+        pnlOda.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
+        cmbOda = new ComboBox { Name = "cmbOda", Dock = DockStyle.Fill, Text = ChatMesaji.VarsayilanOda, MaxLength = 20 };
+        btnOdaGec = new Button { Name = "btnOdaGec", Text = "Geç", AutoSize = true, Enabled = false };
+        pnlOda.Controls.Add(cmbOda, 0, 0);
+        pnlOda.Controls.Add(btnOdaGec, 1, 0);
         grpKullanicilar.Controls.Add(lstKullanicilar);
+        grpKullanicilar.Controls.Add(pnlOda);
+        btnOdaGec.Click += BtnOdaGec_Click;
         split.Panel1.Controls.Add(lstMesajlar);
         split.Panel1.Padding = new Padding(8, 0, 0, 0);
         split.Panel2.Controls.Add(grpKullanicilar);
@@ -84,7 +101,7 @@ public class IstemciForm : Form
         Controls.Add(split);
         Controls.Add(pnlAlt);
         Controls.Add(pnlBaglanti);
-        Load += (_, _) => split.SplitterDistance = Math.Max(100, split.Width - 180);
+        Load += (_, _) => split.SplitterDistance = Math.Max(100, split.Width - 200);
         AcceptButton = btnGonder;
 
         btnBaglan.Click += BtnBaglan_Click;
@@ -93,6 +110,21 @@ public class IstemciForm : Form
         btnGecmisKaydet.Click += BtnGecmisKaydet_Click;
         FormClosed += (_, _) => _istemci.Dispose();
 
+        _istemci.OtomatikYenidenBaglan = chkYenidenBaglan.Checked;
+        chkYenidenBaglan.CheckedChanged += (_, _) => _istemci.OtomatikYenidenBaglan = chkYenidenBaglan.Checked;
+        _istemci.YenidenBaglaniyor += (_, d) => UIdaCalistir(() =>
+        {
+            if (d.Deneme == 1)
+                SistemMesajiEkle("Bağlantı koptu. Otomatik olarak yeniden bağlanılacak...");
+            ArayuzuGuncelle();
+            lblDurum.Text = $"Yeniden bağlanıyor ({d.Deneme}/{_istemci.MaksimumYenidenBaglanmaDenemesi}, {d.Bekleme.TotalSeconds:0} sn)";
+            lblDurum.BackColor = Color.DarkOrange;
+        });
+        _istemci.YenidenBaglandi += (_, _) => UIdaCalistir(() =>
+        {
+            SistemMesajiEkle("Yeniden bağlanıldı.");
+            ArayuzuGuncelle();
+        });
         _istemci.MesajAlindi += (_, m) => UIdaCalistir(() => MesajiIsle(m));
         _istemci.BaglantiKoptu += (_, sebep) => UIdaCalistir(() =>
         {
@@ -112,7 +144,13 @@ public class IstemciForm : Form
         try
         {
             // await sırasında arayüz donmaz; devamı yine UI iş parçacığında çalışır
-            await _istemci.BaglanAsync(txtSunucu.Text, (int)nudPort.Value, txtKullanici.Text);
+            await _istemci.BaglanAsync(txtSunucu.Text, (int)nudPort.Value, txtKullanici.Text, parola: txtParola.Text, oda: cmbOda.Text, tls: chkTls.Checked);
+            if (_istemci.Sifreli)
+                SistemMesajiEkle(_istemci.YeniSunucuKaydedildi
+                    ? $"TLS ile şifreli bağlantı. Sunucu ilk kez görüldü, parmak izi kaydedildi: {_istemci.SunucuParmakIzi![..23]}..."
+                    : $"TLS ile şifreli bağlantı (parmak izi doğrulandı: {_istemci.SunucuParmakIzi![..23]}...).");
+            else
+                SistemMesajiEkle("Uyarı: bağlantı şifresiz (TLS kapalı).");
             txtMesaj.Focus();
         }
         catch (ChatBaglantiHatasi ex)
@@ -120,6 +158,19 @@ public class IstemciForm : Form
             MessageBox.Show(this, ex.Message, "Bağlanılamadı", MessageBoxButtons.OK, MessageBoxIcon.Error);
         }
         ArayuzuGuncelle();
+    }
+
+    private async void BtnOdaGec_Click(object? sender, EventArgs e)
+    {
+        try
+        {
+            await _istemci.OdaDegistirAsync(cmbOda.Text);
+            txtMesaj.Focus();
+        }
+        catch (ChatBaglantiHatasi ex)
+        {
+            MessageBox.Show(this, ex.Message, "Odaya geçilemedi", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+        }
     }
 
     private async void BtnGonder_Click(object? sender, EventArgs e)
@@ -163,8 +214,19 @@ public class IstemciForm : Form
                 lstKullanicilar.Items.Add(k);
             if (secili is not null && lstKullanicilar.Items.Contains(secili))
                 lstKullanicilar.SelectedItem = secili;
+
+            if (lstKullanicilar.Parent is GroupBox grp)
+                grp.Text = $"Oda: {_istemci.Oda} ({lstKullanicilar.Items.Count} kişi)";
+            string yazilan = cmbOda.Text;
+            cmbOda.Items.Clear();
+            foreach (var oda in m.Odalar ?? new List<string>())
+                cmbOda.Items.Add(oda);
+            cmbOda.Text = yazilan;
             return;
         }
+        // Yeniden bağlanınca sunucu geçmişi tekrar gönderir; zaten gösterilmiş mesajları atla
+        if (m.Gecmis == true && _gecmis.Any(g => g.Zaman == m.Zaman && g.Gonderen == m.Gonderen && g.Metin == m.Metin))
+            return;
         MesajEkle(m);
         ArayuzuGuncelle();
     }
@@ -186,7 +248,7 @@ public class IstemciForm : Form
         if (e.Index < 0 || lstMesajlar.Items[e.Index] is not ChatMesaji m)
             return;
 
-        Color renk = m.Tur switch
+        Color renk = m.Gecmis == true ? Color.FromArgb(140, 140, 150) : m.Tur switch
         {
             MesajTuru.Hata => Color.Firebrick,
             MesajTuru.Sistem => Color.Gray,
@@ -234,11 +296,12 @@ public class IstemciForm : Form
     private void ArayuzuGuncelle()
     {
         bool bagli = _istemci.Bagli;
-        btnBaglan.Enabled = !bagli;
-        txtSunucu.Enabled = nudPort.Enabled = txtKullanici.Enabled = !bagli;
-        btnKes.Enabled = bagli;
-        txtMesaj.Enabled = btnGonder.Enabled = chkOzel.Enabled = bagli;
-        lblDurum.Text = bagli ? $"Bağlı: {_istemci.KullaniciAdi}" : "Bağlı değil";
+        bool deniyor = _istemci.YenidenBaglaniyorMu && !bagli;
+        btnBaglan.Enabled = !bagli && !deniyor;
+        txtSunucu.Enabled = nudPort.Enabled = txtKullanici.Enabled = txtParola.Enabled = chkTls.Enabled = !bagli && !deniyor;
+        btnKes.Enabled = bagli || deniyor;
+        txtMesaj.Enabled = btnGonder.Enabled = chkOzel.Enabled = btnOdaGec.Enabled = bagli;
+        lblDurum.Text = bagli ? $"{(_istemci.Sifreli ? "🔒 " : "")}Bağlı: {_istemci.KullaniciAdi}" : "Bağlı değil";
         lblDurum.BackColor = bagli ? Color.FromArgb(30, 140, 60) : Color.DimGray;
         if (!bagli)
             lstKullanicilar.Items.Clear();

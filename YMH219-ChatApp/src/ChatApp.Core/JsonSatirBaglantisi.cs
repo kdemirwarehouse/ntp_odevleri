@@ -19,10 +19,14 @@ public sealed class JsonSatirBaglantisi : IDisposable
     private readonly SemaphoreSlim _yazmaKilidi = new(1, 1);
     private bool _kapandi;
 
-    public JsonSatirBaglantisi(TcpClient tcp)
+    public JsonSatirBaglantisi(TcpClient tcp) : this(tcp, null) { }
+
+    /// <param name="akis">TLS kullanılıyorsa SslStream; null ise doğrudan NetworkStream kullanılır.</param>
+    public JsonSatirBaglantisi(TcpClient tcp, Stream? akis)
     {
         _tcp = tcp ?? throw new ArgumentNullException(nameof(tcp));
-        var akis = tcp.GetStream();
+        akis ??= tcp.GetStream();
+        Sifreli = akis is System.Net.Security.SslStream;
         var utf8 = new UTF8Encoding(false);
         _okuyucu = new StreamReader(akis, utf8);
         _yazici = new StreamWriter(akis, utf8) { AutoFlush = true, NewLine = "\n" };
@@ -30,6 +34,9 @@ public sealed class JsonSatirBaglantisi : IDisposable
     }
 
     public string UzakAdres { get; }
+
+    /// <summary>Bağlantı TLS ile şifreli mi?</summary>
+    public bool Sifreli { get; }
 
     public async Task GonderAsync(ChatMesaji mesaj, CancellationToken iptal = default)
     {

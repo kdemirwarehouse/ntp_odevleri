@@ -1,0 +1,227 @@
+<!doctype html>
+<html lang="tr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Chat — YMH219 ChatApp Web Demosu</title>
+<meta name="description" content="YMH219 ChatApp'in tarayıcı demosu: aynı tarayıcıdaki sekmeler arasında BroadcastChannel ile odalı sohbet.">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><path d='M12 18h76a8 8 0 0 1 8 8v40a8 8 0 0 1-8 8H40L20 90V74h-8a8 8 0 0 1-8-8V26a8 8 0 0 1 8-8z' fill='%231e8c3c'/><g fill='white'><circle cx='30' cy='46' r='6'/><circle cx='50' cy='46' r='6'/><circle cx='70' cy='46' r='6'/></g></svg>">
+<style>
+  :root { --bg:#f4f5f7; --panel:#fff; --ink:#1f2328; --muted:#6e7781; --line:#d0d7de; --me:#005aaa; --pm:#8b008b; --sys:#808080; --err:#b22222; --ok:#1e8c3c; }
+  @media (prefers-color-scheme: dark) { :root { --bg:#0d1117; --panel:#161b22; --ink:#e6edf3; --muted:#8d96a0; --line:#30363d; --me:#58a6ff; --pm:#d2a8ff; --sys:#8b949e; --err:#ff7b72; --ok:#3fb950; } }
+  * { box-sizing: border-box; }
+  body { margin:0; font:14px/1.45 "Segoe UI", system-ui, -apple-system, sans-serif; background:var(--bg); color:var(--ink); height:100vh; display:flex; flex-direction:column; }
+  .bar { display:flex; flex-wrap:wrap; gap:8px; align-items:center; padding:10px 14px; background:var(--panel); border-bottom:1px solid var(--line); }
+  input, select, button { font:inherit; padding:5px 9px; border:1px solid var(--line); border-radius:6px; background:var(--panel); color:var(--ink); }
+  button { cursor:pointer; } button:disabled, input:disabled { opacity:.5; cursor:default; }
+  .badge { font-weight:700; color:#fff; background:dimgray; padding:5px 10px; border-radius:6px; }
+  .badge.on { background:var(--ok); }
+  .info { margin-left:auto; color:var(--muted); font-size:12.5px; max-width:420px; }
+  main { flex:1; display:grid; grid-template-columns:1fr 230px; gap:10px; padding:10px 14px; min-height:0; }
+  @media (max-width:760px) { main { grid-template-columns:1fr; } }
+  #log { overflow:auto; background:var(--panel); border:1px solid var(--line); border-radius:6px; padding:6px 10px; font-size:14.5px; min-height:240px; }
+  #log div { padding:2px 0; white-space:pre-wrap; word-break:break-word; }
+  .Sistem { color:var(--sys); font-style:italic; } .Ozel { color:var(--pm); } .Hata { color:var(--err); } .me { color:var(--me); } .old { opacity:.6; }
+  aside { display:flex; flex-direction:column; gap:8px; background:var(--panel); border:1px solid var(--line); border-radius:6px; padding:8px; min-height:0; }
+  aside h3 { margin:0; font-size:14px; }
+  #users { list-style:none; margin:0; padding:0; overflow:auto; flex:1; }
+  #users li { padding:4px 6px; border-radius:4px; cursor:pointer; } #users li.sel { background:var(--me); color:#fff; }
+  .room { display:flex; gap:6px; } .room input { flex:1; min-width:0; }
+  .send { display:flex; gap:8px; align-items:center; padding:0 14px 12px; }
+  .send input[type=text] { flex:1; }
+  footer { padding:6px 14px; font-size:12.5px; color:var(--muted); border-top:1px solid var(--line); background:var(--panel); }
+  footer a { color:var(--me); }
+</style>
+</head>
+<body>
+<div class="bar">
+  <label>Ad: <input id="name" maxlength="20" placeholder="kullanıcı adı" size="12"></label>
+  <label>Oda: <input id="room0" maxlength="20" value="Genel" size="9"></label>
+  <button id="btnJoin">Bağlan</button>
+  <button id="btnLeave" disabled>Bağlantıyı Kes</button>
+  <span class="badge" id="badge">Bağlı değil</span>
+  <button id="btnNewTab" title="Aynı sohbete ikinci bir kullanıcıyla katılmak için">+ Yeni sekme</button>
+  <span class="info">Tarayıcı demosu: statik GitHub Pages'te TCP sunucusu çalışamadığı için mesajlar <b>aynı tarayıcıdaki
+    sekmeler arasında</b> <code>BroadcastChannel</code> ile, masaüstü sürümündeki JSON protokolüyle taşınır. İnternete hiçbir veri gönderilmez.</span>
+</div>
+<main>
+  <div id="log" aria-live="polite"></div>
+  <aside>
+    <h3 id="roomTitle">Oda: —</h3>
+    <ul id="users"></ul>
+    <div class="room"><input id="room" list="rooms" maxlength="20" placeholder="oda adı"><datalist id="rooms"></datalist><button id="btnRoom" disabled>Geç</button></div>
+  </aside>
+</main>
+<div class="send">
+  <input type="text" id="msg" maxlength="1000" placeholder="Mesajınızı yazın ve Enter'a basın" disabled>
+  <label><input type="checkbox" id="pm" disabled> Seçili kişiye özel</label>
+  <button id="btnSend" disabled>Gönder</button>
+  <button id="btnSave">Geçmişi Kaydet</button>
+</div>
+<footer>YMH219 ChatApp (C# · TcpListener/TcpClient · TLS) tarayıcı demosu — Abdulkadir Demir ·
+  <a href="https://github.com/kdemirwarehouse/YMH219-ChatApp" target="_blank" rel="noopener">GitHub</a></footer>
+<script>
+"use strict";
+// Masaüstü sürümündeki ChatMesaji protokolünün aynısı: { Tur, Gonderen, Alici, Metin, Zaman, Oda, Kullanicilar }.
+// Merkezi sunucu yerine her sekme kendi adına "Katil/Sohbet/Ozel/OdaDegistir/Ayril" yayınlar; çevrimiçi listesi
+// her 2 sn'de gönderilen "Nabiz" mesajlarıyla tutulur (6 sn ses vermeyen sekme çevrimdışı sayılır).
+const $ = id => document.getElementById(id);
+const ch = "BroadcastChannel" in window ? new BroadcastChannel("ymh219-chat") : null;
+const me = { id: crypto.randomUUID ? crypto.randomUUID() : String(Math.random()), name: null, room: "Genel" };
+const peers = new Map();     // id -> { name, room, seen }
+const log = [];              // gösterilen mesajlar (Geçmişi Kaydet için)
+let joined = false, selected = null, beat = null;
+
+const pad = n => String(n).padStart(2, "0");
+const hms = d => `${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+const historyKey = room => "ymh219-chat-gecmis-" + room.toLowerCase();
+
+function roomError(r) {
+  r = (r || "").trim();
+  if (!r.length || r.length > 20) return "Oda adı 1-20 karakter olmalı.";
+  if (!/^[\p{L}\p{N} _-]+$/u.test(r)) return "Oda adında yalnızca harf, rakam, boşluk, - ve _ kullanılabilir.";
+  return null;
+}
+function nameError(n) {
+  n = (n || "").trim();
+  if (!n) return "Kullanıcı adı boş olamaz.";
+  if (n.length > 20) return "Kullanıcı adı en fazla 20 karakter olabilir.";
+  if (n.toLowerCase() === "sunucu") return "Bu kullanıcı adı ayrılmıştır.";
+  if ([...peers.values()].some(p => p.name.toLowerCase() === n.toLowerCase())) return "Bu kullanıcı adı zaten kullanılıyor.";
+  return null;
+}
+function text(m) {
+  const t = hms(new Date(m.Zaman));
+  switch (m.Tur) {
+    case "Sohbet": return `[${t}] ${m.Gonderen}: ${m.Metin}`;
+    case "Ozel": return `[${t}] (özel) ${m.Gonderen} → ${m.Alici}: ${m.Metin}`;
+    case "Hata": return `[${t}] HATA: ${m.Metin}`;
+    default: return `[${t}] * ${m.Metin}`;
+  }
+}
+function show(m, old = false) {
+  log.push(m);
+  const div = document.createElement("div");
+  div.className = m.Tur + (m.Gonderen === me.name && m.Tur === "Sohbet" ? " me" : "") + (old ? " old" : "");
+  div.textContent = text(m);
+  $("log").appendChild(div); $("log").scrollTop = 1e9;
+}
+const sys = (Metin, Tur = "Sistem") => show({ Tur, Gonderen: "İstemci", Metin, Zaman: new Date().toISOString() });
+function send(m) { const full = { ...m, Gonderen: me.name, Zaman: new Date().toISOString(), _id: me.id, Oda: m.Oda ?? me.room }; ch?.postMessage(full); return full; }
+
+function saveHistory(m) {
+  if (m.Tur !== "Sohbet" && m.Tur !== "Sistem") return;
+  const key = historyKey(m.Oda || "Genel"), list = JSON.parse(localStorage.getItem(key) || "[]");
+  list.push({ Tur: m.Tur, Gonderen: m.Gonderen, Metin: m.Metin, Zaman: m.Zaman, Oda: m.Oda });
+  localStorage.setItem(key, JSON.stringify(list.slice(-100)));
+}
+function loadHistory(room) {
+  for (const m of JSON.parse(localStorage.getItem(historyKey(room)) || "[]").slice(-50)) show({ ...m, Gecmis: true }, true);
+}
+
+function refreshUsers() {
+  const now = Date.now();
+  for (const [id, p] of peers) if (now - p.seen > 6000) { peers.delete(id); if (joined && p.room === me.room) sys(`${p.name} sohbetten ayrıldı.`); }
+  const inRoom = joined ? [me.name, ...[...peers.values()].filter(p => p.room === me.room).map(p => p.name)].sort((a, b) => a.localeCompare(b, "tr")) : [];
+  $("users").replaceChildren(...inRoom.map(n => { const li = document.createElement("li"); li.textContent = n + (n === me.name ? " (sen)" : ""); li.dataset.name = n;
+    if (n === selected) li.className = "sel"; li.onclick = () => { selected = n === selected ? null : n; refreshUsers(); }; return li; }));
+  $("roomTitle").textContent = joined ? `Oda: ${me.room} (${inRoom.length} kişi)` : "Oda: —";
+  const rooms = new Set(["Genel", me.room, ...[...peers.values()].map(p => p.room)]);
+  $("rooms").replaceChildren(...[...rooms].sort().map(r => { const o = document.createElement("option"); o.value = r; return o; }));
+}
+function ui() {
+  $("badge").textContent = joined ? `Bağlı: ${me.name}` : "Bağlı değil";
+  $("badge").classList.toggle("on", joined);
+  for (const id of ["name", "room0", "btnJoin"]) $(id).disabled = joined;
+  for (const id of ["btnLeave", "msg", "pm", "btnSend", "btnRoom"]) $(id).disabled = !joined;
+  document.title = (joined ? me.name + " — " : "") + "Chat — YMH219 ChatApp Web Demosu";
+  refreshUsers();
+}
+
+ch && (ch.onmessage = ({ data: m }) => {
+  if (!m || m._id === me.id) return;
+  const known = peers.get(m._id);
+  if (m.Tur === "Ayril") { peers.delete(m._id); if (joined && m.Oda === me.room) sys(`${m.Gonderen} sohbetten ayrıldı.`); refreshUsers(); return; }
+  if (m.Tur === "Kim") { if (joined) send({ Tur: "Nabiz" }); return; }
+  peers.set(m._id, { name: m.Gonderen, room: m.Oda, seen: Date.now() });
+  if (!joined) { refreshUsers(); return; }
+  switch (m.Tur) {
+    case "Katil": if (m.Oda === me.room) sys(`${m.Gonderen} sohbete katıldı.`); break;
+    case "OdaDegistir":
+      if (known && known.room === me.room && m.Oda !== me.room) sys(`${m.Gonderen} '${m.Oda}' odasına geçti.`);
+      else if (m.Oda === me.room) sys(`${m.Gonderen} odaya katıldı.`);
+      break;
+    case "Sohbet": if (m.Oda === me.room) show(m); break;
+    case "Ozel": if (m.Alici === me.name) show(m); break;
+  }
+  refreshUsers();
+});
+
+function join() {
+  if (!ch) { sys("Bu tarayıcı BroadcastChannel desteklemiyor.", "Hata"); return; }
+  const n = $("name").value.trim(), r = $("room0").value.trim() || "Genel";
+  const err = nameError(n) || roomError(r);
+  if (err) { alert(err); return; }
+  me.name = n; me.room = r; joined = true;
+  sys(`Hoş geldin ${n}! '${r}' odasına katıldın.`);
+  loadHistory(r);
+  const m = send({ Tur: "Katil" }); saveHistory({ Tur: "Sistem", Gonderen: "Sunucu", Metin: `${n} sohbete katıldı.`, Zaman: m.Zaman, Oda: r });
+  beat = setInterval(() => { send({ Tur: "Nabiz" }); refreshUsers(); }, 2000);
+  localStorage.setItem("ymh219-chat-ad", n);
+  ui(); $("msg").focus();
+}
+function leave(silent) {
+  if (!joined) return;
+  send({ Tur: "Ayril" }); saveHistory({ Tur: "Sistem", Gonderen: "Sunucu", Metin: `${me.name} sohbetten ayrıldı.`, Zaman: new Date().toISOString(), Oda: me.room });
+  clearInterval(beat); joined = false; selected = null;
+  if (!silent) sys("Bağlantı kesildi.");
+  ui();
+}
+function sendMsg() {
+  const t = $("msg").value.trim(); if (!t || !joined) return;
+  if ($("pm").checked) {
+    if (!selected || selected === me.name) { alert("Özel mesaj için sağdaki listeden başka bir kullanıcı seçin."); return; }
+    show(send({ Tur: "Ozel", Alici: selected, Metin: t }));
+  } else {
+    const m = send({ Tur: "Sohbet", Metin: t }); show(m); saveHistory(m);
+  }
+  $("msg").value = "";
+}
+function changeRoom() {
+  const r = $("room").value.trim(), err = roomError(r);
+  if (err) { alert(err); return; }
+  if (r.toLowerCase() === me.room.toLowerCase()) return;
+  const old = me.room;
+  saveHistory({ Tur: "Sistem", Gonderen: "Sunucu", Metin: `${me.name} '${r}' odasına geçti.`, Zaman: new Date().toISOString(), Oda: old });
+  me.room = r; send({ Tur: "OdaDegistir" });
+  sys(`'${r}' odasına geçtin.`); loadHistory(r);
+  saveHistory({ Tur: "Sistem", Gonderen: "Sunucu", Metin: `${me.name} odaya katıldı.`, Zaman: new Date().toISOString(), Oda: r });
+  $("room").value = ""; refreshUsers();
+}
+function saveLog() {
+  if (!log.length) { alert("Kaydedilecek mesaj yok."); return; }
+  const d = new Date(), a = document.createElement("a");
+  a.href = URL.createObjectURL(new Blob(["﻿" + log.map(text).join("\r\n") + "\r\n"], { type: "text/plain;charset=utf-8" }));
+  a.download = `sohbet-gecmisi-${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}-${pad(d.getHours())}${pad(d.getMinutes())}${pad(d.getSeconds())}.txt`;
+  a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+}
+
+$("btnJoin").onclick = join;
+$("btnLeave").onclick = () => leave(false);
+$("btnSend").onclick = sendMsg;
+$("btnRoom").onclick = changeRoom;
+$("btnSave").onclick = saveLog;
+$("btnNewTab").onclick = () => window.open(location.href.split("?")[0], "_blank");
+$("msg").addEventListener("keydown", e => { if (e.key === "Enter") sendMsg(); });
+$("room").addEventListener("keydown", e => { if (e.key === "Enter") changeRoom(); });
+$("name").addEventListener("keydown", e => { if (e.key === "Enter") join(); });
+window.addEventListener("pagehide", () => leave(true));
+
+$("name").value = new URLSearchParams(location.search).get("ad") || "";
+ch?.postMessage({ Tur: "Kim", _id: me.id });   // açık sekmeleri öğren (kullanıcı adı çakışması kontrolü için)
+ui();
+if (!ch) sys("Bu tarayıcı BroadcastChannel desteklemiyor; demo çalışmaz.", "Hata");
+else sys("Bir ad yazıp Bağlan'a basın. İkinci kullanıcı için '+ Yeni sekme' ile aynı sayfayı açın.");
+</script>
+</body>
+</html>

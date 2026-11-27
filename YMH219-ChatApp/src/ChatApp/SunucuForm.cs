@@ -9,7 +9,7 @@ namespace ChatApp;
 /// </summary>
 public class SunucuForm : Form
 {
-    private readonly ChatSunucu _sunucu = new();
+    private readonly ChatSunucu _sunucu = new(new MesajGecmisi(MesajGecmisi.VarsayilanDosya));
 
     private readonly NumericUpDown nudPort;
     private readonly Button btnBaslat;
@@ -17,20 +17,26 @@ public class SunucuForm : Form
     private readonly Label lblDurum;
     private readonly ListView lvIstemciler;
     private readonly ListBox lstGunluk;
+    private readonly Button btnGecmisSil;
+    private readonly TextBox txtParola;
+    private readonly CheckBox chkTls;
 
     public SunucuForm()
     {
         Text = "Chat Sunucusu";
         Font = new Font("Segoe UI", 9.5F);
         StartPosition = FormStartPosition.CenterScreen;
-        ClientSize = new Size(720, 520);
+        ClientSize = new Size(820, 540);
         MinimumSize = new Size(600, 420);
 
         // --- Üst panel: port ve butonlar
-        var pnlUst = new FlowLayoutPanel { Dock = DockStyle.Top, Height = 48, Padding = new Padding(8, 10, 8, 0) };
+        var pnlUst = new FlowLayoutPanel { Dock = DockStyle.Top, AutoSize = true, Padding = new Padding(8, 10, 8, 6) };
         nudPort = new NumericUpDown { Name = "nudPort", Minimum = 1, Maximum = 65535, Value = 5000, Width = 80 };
         btnBaslat = new Button { Name = "btnBaslat", Text = "Sunucuyu Başlat", AutoSize = true };
         btnDurdur = new Button { Name = "btnDurdur", Text = "Durdur", AutoSize = true, Enabled = false };
+        txtParola = new TextBox { Name = "txtParola", Width = 110, UseSystemPasswordChar = true, PlaceholderText = "parola (isteğe bağlı)" };
+        chkTls = new CheckBox { Name = "chkTls", Text = "TLS", AutoSize = true, Checked = true, Margin = new Padding(8, 6, 0, 0) };
+        btnGecmisSil = new Button { Name = "btnGecmisSil", Text = "Geçmişi Sil", AutoSize = true };
         lblDurum = new Label
         {
             Name = "lblDurum", AutoSize = true, Padding = new Padding(10, 5, 10, 5),
@@ -40,7 +46,9 @@ public class SunucuForm : Form
         pnlUst.Controls.AddRange(new Control[]
         {
             new Label { Text = "Port:", AutoSize = true, Padding = new Padding(0, 5, 0, 0) },
-            nudPort, btnBaslat, btnDurdur, lblDurum
+            nudPort,
+            new Label { Text = "Parola:", AutoSize = true, Padding = new Padding(6, 5, 0, 0) }, txtParola, chkTls,
+            btnBaslat, btnDurdur, btnGecmisSil, lblDurum
         });
 
         // --- Bağlı istemciler
@@ -52,6 +60,7 @@ public class SunucuForm : Form
         lvIstemciler.Columns.Add("Kullanıcı adı", 150);
         lvIstemciler.Columns.Add("IP adresi : port", 180);
         lvIstemciler.Columns.Add("Bağlanma zamanı", 150);
+        lvIstemciler.Columns.Add("Oda", 100);
         lvIstemciler.Columns.Add("Mesaj", 70);
         grpIstemciler.Controls.Add(lvIstemciler);
 
@@ -70,6 +79,15 @@ public class SunucuForm : Form
         btnBaslat.Click += BtnBaslat_Click;
         btnDurdur.Click += (_, _) => { _sunucu.Durdur(); ArayuzuGuncelle(); };
         FormClosed += (_, _) => _sunucu.Dispose();
+        btnGecmisSil.Click += (_, _) =>
+        {
+            if (MessageBox.Show(this, $"Kayıtlı {_sunucu.Gecmis.Sayi} mesajlık sohbet geçmişi silinsin mi?", "Geçmişi sil",
+                    MessageBoxButtons.YesNo, MessageBoxIcon.Question) != DialogResult.Yes)
+                return;
+            _sunucu.Gecmis.Temizle();
+            GunlugeEkle($"[{DateTime.Now:HH:mm:ss}] Sohbet geçmişi silindi.");
+        };
+        Load += (_, _) => GunlugeEkle($"[{DateTime.Now:HH:mm:ss}] Geçmiş dosyası: {_sunucu.Gecmis.DosyaYolu} ({_sunucu.Gecmis.Sayi} mesaj yüklendi)");
 
         // Core olayları -> arayüz (UI iş parçacığına aktarılarak)
         _sunucu.Gunluk += (_, metin) => UIdaCalistir(() => GunlugeEkle(metin));
@@ -82,6 +100,8 @@ public class SunucuForm : Form
     {
         try
         {
+            _sunucu.Parola = txtParola.Text;
+            _sunucu.Sertifika = chkTls.Checked ? TlsYardimcisi.SertifikaYukleVeyaOlustur() : null;
             _sunucu.Baslat((int)nudPort.Value);
         }
         catch (SocketException ex)
@@ -97,9 +117,9 @@ public class SunucuForm : Form
     {
         bool calisiyor = _sunucu.Calisiyor;
         btnBaslat.Enabled = !calisiyor;
-        nudPort.Enabled = !calisiyor;
+        nudPort.Enabled = txtParola.Enabled = chkTls.Enabled = !calisiyor;
         btnDurdur.Enabled = calisiyor;
-        lblDurum.Text = calisiyor ? $"Çalışıyor — port {_sunucu.Port}" : "Durduruldu";
+        lblDurum.Text = calisiyor ? $"Çalışıyor — port {_sunucu.Port}" + (_sunucu.TlsAcik ? " · TLS" : " · şifresiz") + (_sunucu.Parola is null ? "" : " · parolalı") : "Durduruldu";
         lblDurum.BackColor = calisiyor ? Color.FromArgb(30, 140, 60) : Color.DimGray;
         Text = calisiyor ? $"Chat Sunucusu — port {_sunucu.Port}" : "Chat Sunucusu";
         IstemciListesiniYenile();
@@ -114,6 +134,7 @@ public class SunucuForm : Form
             var oge = new ListViewItem(i.KullaniciAdi);
             oge.SubItems.Add(i.UzakAdres);
             oge.SubItems.Add(i.BaglanmaZamani.ToString("dd.MM.yyyy HH:mm:ss"));
+            oge.SubItems.Add(i.Oda);
             oge.SubItems.Add(i.MesajSayisi.ToString());
             lvIstemciler.Items.Add(oge);
         }
