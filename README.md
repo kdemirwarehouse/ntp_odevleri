@@ -20,14 +20,20 @@ Nesne Tabanlı Programlama dersindeki ödevlerimin hepsini bir arada tutan depo.
 
 Bu altı proje ayrıca kendi bağımsız depolarında da duruyor. Buradaki klasörler o depoların kaynak kodunun kopyası. Her proje kendi çözüm dosyası ve README'siyle bağımsız derlenebilir.
 
-| Klasör | Uygulama | Bağımsız depo |
-|---|---|---|
-| [YMH219-FlappyBird](YMH219-FlappyBird/README.md) | Timer, fizik, çarpışma, skor | [kdemirwarehouse/YMH219-FlappyBird](https://github.com/kdemirwarehouse/YMH219-FlappyBird) |
-| [YMH219-NotepadApp](YMH219-NotepadApp/README.md) | Not defteri, File I/O, JSON serileştirme | [kdemirwarehouse/YMH219-NotepadApp](https://github.com/kdemirwarehouse/YMH219-NotepadApp) |
-| [YMH219-KeyEventLogger](YMH219-KeyEventLogger/README.md) | Yalnızca kendi penceresindeki klavye olayları | [kdemirwarehouse/YMH219-KeyEventLogger](https://github.com/kdemirwarehouse/YMH219-KeyEventLogger) |
-| [YMH219-ChatApp](YMH219-ChatApp/README.md) | async/await ile TCP istemci-sunucu sohbet | [kdemirwarehouse/YMH219-ChatApp](https://github.com/kdemirwarehouse/YMH219-ChatApp) |
-| [YMH219-SpeechApp](YMH219-SpeechApp/README.md) | System.Speech ile TTS ve STT | [kdemirwarehouse/YMH219-SpeechApp](https://github.com/kdemirwarehouse/YMH219-SpeechApp) |
-| [YMH219-FaceRecognition](YMH219-FaceRecognition/README.md) | OpenCvSharp ile Haar algılama ve LBPH tanıma | [kdemirwarehouse/YMH219-FaceRecognition](https://github.com/kdemirwarehouse/YMH219-FaceRecognition) |
+| Klasör | Uygulama | Bağımsız depo | Tarayıcıda dene |
+|---|---|---|---|
+| [YMH219-FlappyBird](YMH219-FlappyBird/README.md) | Sabit adımlı oyun döngüsü, elips çarpışma, zorluk seviyeleri, ses, paralaks, demo modu (otomatik pilot), ölçeklenen pencere | [YMH219-FlappyBird](https://github.com/kdemirwarehouse/YMH219-FlappyBird) | [Oyna](https://kdemirwarehouse.github.io/YMH219-FlappyBird/) |
+| [YMH219-NotepadApp](YMH219-NotepadApp/README.md) | Not başına JSON dosyası (artımlı kayıt), çoklu pencere çakışma algılama, .rtf/.html dışa aktarma, geri al/yinele, etiketler, sabitleme, XML, karanlık tema | [YMH219-NotepadApp](https://github.com/kdemirwarehouse/YMH219-NotepadApp) | — |
+| [YMH219-KeyEventLogger](YMH219-KeyEventLogger/README.md) | Yalnızca kendi penceresindeki klavye olayları; ok/Tab yakalama, tekrar algılama, KeyDown↔KeyPress eşleştirme | [YMH219-KeyEventLogger](https://github.com/kdemirwarehouse/YMH219-KeyEventLogger) | [Dene](https://kdemirwarehouse.github.io/YMH219-KeyEventLogger/) |
+| [YMH219-ChatApp](YMH219-ChatApp/README.md) | async/await TCP sohbet; TLS (TOFU parmak izi), sunucu parolası, odalar, kalıcı geçmiş, otomatik yeniden bağlanma | [YMH219-ChatApp](https://github.com/kdemirwarehouse/YMH219-ChatApp) | [Demo](https://kdemirwarehouse.github.io/YMH219-ChatApp/) |
+| [YMH219-SpeechApp](YMH219-SpeechApp/README.md) | SAPI + OneCore (Türkçe Tolga) okuma, Vosk ile çevrimdışı Türkçe tanıma, gürültü kapısı | [YMH219-SpeechApp](https://github.com/kdemirwarehouse/YMH219-SpeechApp) | [Dene](https://kdemirwarehouse.github.io/YMH219-SpeechApp/) |
+| [YMH219-FaceRecognition](YMH219-FaceRecognition/README.md) | OpenCvSharp; YuNet DNN / Haar algılama, göz hizalama + CLAHE, LBPH, kalibre güven ve otomatik eşik | [YMH219-FaceRecognition](https://github.com/kdemirwarehouse/YMH219-FaceRecognition) | — |
+
+Klasörler bağımsız depoların güncel kaynak kodunun birebir kopyasıdır (her biri kendi çözüm dosyası, testleri ve README'siyle
+bağımsız derlenir). Yalnızca depoya özgü `.github/workflows/pages.yml` dosyaları buraya alınmamıştır; tarayıcı sürümleri
+(`web/index.html`) bağımsız depolardan GitHub Pages'e yayınlanır.
+
+**Testler:** her projede `dotnet run --project <Proje>/tests/<Proje>.Tests` (toplam 99 test).
 
 ## Hızlı başlangıç
 
