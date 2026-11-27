@@ -1,0 +1,427 @@
+<!doctype html>
+<html lang="tr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no">
+<title>Flappy Bird — YMH219 (Web Sürümü)</title>
+<meta name="description" content="YMH219 Windows Forms Flappy Bird oyununun tarayıcıda çalışan web sürümü.">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><ellipse cx='48' cy='52' rx='40' ry='30' fill='gold' stroke='%23b8860b' stroke-width='5'/><circle cx='66' cy='40' r='10' fill='white'/><circle cx='70' cy='41' r='5'/><path d='M84 50 L98 56 L84 62Z' fill='orangered'/></svg>">
+<style>
+  :root { color-scheme: dark; }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; background: #181a20; color: #e8e8e8;
+    font-family: "Segoe UI", system-ui, -apple-system, sans-serif; overflow: hidden; }
+  #app { display: flex; flex-direction: column; height: 100%; }
+  header { display: flex; gap: 18px; align-items: center; padding: 8px 14px; background: #282c34;
+    font-weight: 700; font-size: 15px; flex-wrap: wrap; }
+  header .score { color: #fff; } header .best { color: gold; }
+  header .level { color: lightgreen; } header .speed { color: lightskyblue; }
+  header .spacer { flex: 1; }
+  header a, header button { color: #9ecbff; background: none; border: 1px solid #3b4250; border-radius: 6px;
+    padding: 3px 9px; font: inherit; font-weight: 600; font-size: 13px; cursor: pointer; text-decoration: none; }
+  header button:hover, header a:hover { background: #343a46; }
+  #stage { flex: 1; position: relative; touch-action: none; }
+  canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+  footer { font-size: 12px; color: #8a909c; padding: 6px 14px; background: #20232a; }
+  footer kbd { background: #2e333d; border-radius: 4px; padding: 0 5px; color: #ddd; }
+</style>
+</head>
+<body>
+<div id="app">
+  <header>
+    <span class="score" id="lblScore">Skor: 0</span>
+    <span class="best" id="lblBest">En Yüksek: 0</span>
+    <span class="level" id="lblLevel">Orta • Sv 1</span>
+    <span class="speed" id="lblSpeed">Hız: 4,0</span>
+    <span class="spacer"></span>
+    <button id="btnSound" title="M">Ses: Açık</button>
+    <button id="btnFull" title="F11 / F">Tam ekran</button>
+    <a href="https://github.com/kdemirwarehouse/YMH219-FlappyBird" target="_blank" rel="noopener">GitHub</a>
+  </header>
+  <div id="stage"><canvas id="game"></canvas></div>
+  <footer>
+    <kbd>Boşluk</kbd>/<kbd>↑</kbd>/tıklama: zıpla · <kbd>P</kbd>: duraklat · <kbd>Enter</kbd>: yeniden ·
+    <kbd>1</kbd><kbd>2</kbd><kbd>3</kbd>: zorluk · <kbd>D</kbd>: demo · <kbd>M</kbd>: ses ·
+    Windows Forms sürümünün (C#) tarayıcı portu — YMH 219, Abdulkadir Demir
+  </footer>
+</div>
+<script>
+"use strict";
+// ---------------------------------------------------------------------------
+// Bu dosya, C# / Windows Forms sürümündeki sınıfların (Bird, Pipe, Difficulty,
+// GameManager, AutoPilot, Background, SoundEffects) birebir JavaScript karşılığıdır.
+// Oyun 480x680 mantıksal çözünürlükte hesaplanır ve ekrana oran korunarak ölçeklenir.
+// ---------------------------------------------------------------------------
+const LOGICAL_W = 480, LOGICAL_H = 680, GROUND_H = 60, PLAY_H = LOGICAL_H - GROUND_H;
+const STEP = 1 / 60, MAX_STEPS = 5;
+const State = { Ready: 0, Playing: 1, Paused: 2, GameOver: 3 };
+
+// ---- Mulberry32: tohumlanabilir rastgele sayı üreteci ----
+function rng(seed) {
+  return () => { seed |= 0; seed = seed + 0x6D2B79F5 | 0; let t = Math.imul(seed ^ seed >>> 15, 1 | seed);
+    t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; };
+}
+const random = rng(Date.now() & 0xffffffff);
+const randInt = (min, maxExcl) => min + Math.floor(random() * (maxExcl - min));
+
+// ---- Zorluk ----
+const Difficulties = [
+  { name: "Kolay", gap: 190, base: 3.2, step: 0.4, max: 6.0, spacing: 270 },
+  { name: "Orta",  gap: 160, base: 4.0, step: 0.6, max: 7.5, spacing: 250 },
+  { name: "Zor",   gap: 135, base: 4.8, step: 0.7, max: 8.5, spacing: 225 },
+];
+
+// ---- Kuş ----
+const GRAVITY = 0.55, FLAP = -8.5, MAX_FALL = 12;
+class Bird {
+  constructor(x, y) { this.startX = x; this.startY = y; this.w = 38; this.h = 28; this.reset(); }
+  reset() { this.x = this.startX; this.y = this.startY; this.v = 0; this.wing = 0; this.hover = 0; }
+  flap() { this.v = FLAP; }
+  update() { this.v = Math.min(this.v + GRAVITY, MAX_FALL); this.y += this.v; if (this.y < 0) { this.y = 0; this.v = 0; } }
+  animate(hovering) {
+    this.wing += (this.v < 0 || hovering) ? 0.45 : 0.18;
+    if (hovering) { this.hover += 0.08; this.y = this.startY + Math.sin(this.hover) * 6; }
+  }
+  // Elips gövde ile dikdörtgen kesişimi (birim çembere dönüştürerek)
+  intersects(rx0, ry0, rw, rh, bx = this.x, by = this.y) {
+    if (rw <= 0 || rh <= 0) return false;
+    const cx = bx + this.w / 2, cy = by + this.h / 2, rx = this.w / 2 - 1, ry = this.h / 2 - 1;
+    const nx = Math.min(Math.max(cx, rx0), rx0 + rw), ny = Math.min(Math.max(cy, ry0), ry0 + rh);
+    const dx = (nx - cx) / rx, dy = (ny - cy) / ry;
+    return dx * dx + dy * dy <= 1;
+  }
+  draw(g) {
+    const angle = Math.min(Math.max(this.v * 4, -25), 70) * Math.PI / 180;
+    g.save();
+    g.translate(this.x + this.w / 2, this.y + this.h / 2); g.rotate(angle); g.translate(-this.w / 2, -this.h / 2);
+    ellipse(g, 0, 0, this.w, this.h, "gold", "#b8860b", 2);
+    const f = Math.sin(this.wing), wh = 6 + 6 * Math.abs(f), wy = this.h / 2 - 2 - f * 7;
+    ellipse(g, 3, wy, 18, wh, "orange", "darkorange", 1.5);
+    ellipse(g, this.w - 16, 4, 11, 11, "white");
+    ellipse(g, this.w - 11, 7, 5, 5, "black");
+    g.fillStyle = "orangered"; g.beginPath();
+    g.moveTo(this.w - 4, this.h / 2 - 3); g.lineTo(this.w + 8, this.h / 2 + 1); g.lineTo(this.w - 4, this.h / 2 + 5); g.fill();
+    g.restore();
+  }
+}
+
+// ---- Boru ----
+const PIPE_W = 70, CAP_H = 22, MIN_MARGIN = 60, MAX_SHIFT = 170;
+class Pipe {
+  constructor(x, gap) { this.gap = gap; this.reposition(x); }
+  reposition(x, prevTop) {
+    this.x = x; let min = MIN_MARGIN, max = Math.max(min + 1, PLAY_H - this.gap - MIN_MARGIN);
+    if (prevTop !== undefined) { min = Math.max(min, prevTop - MAX_SHIFT); max = Math.min(max, prevTop + MAX_SHIFT); }
+    this.top = randInt(min, max + 1); this.passed = false;
+  }
+  parts() {
+    const b = this.top + this.gap, bh = PLAY_H - b;
+    return [[this.x, 0, PIPE_W, this.top], [this.x - 5, this.top - CAP_H, PIPE_W + 10, CAP_H],
+            [this.x, b, PIPE_W, bh], [this.x - 5, b, PIPE_W + 10, CAP_H]];
+  }
+  collides(bird, bx = bird.x, by = bird.y) {
+    return this.parts().some(([x, y, w, h]) => bird.intersects(x, y, w, h, bx, by));
+  }
+  draw(g) {
+    const part = (x, y, w, h, capBottom) => {
+      if (h <= 0) return;
+      g.fillStyle = "rgb(92,184,72)"; g.fillRect(x, y, w, h);
+      g.fillStyle = "rgb(60,130,45)"; g.fillRect(x + w - 14, y, 10, h);
+      g.strokeStyle = "rgb(40,90,30)"; g.lineWidth = 2; g.strokeRect(x, y, w, h);
+      const cy = capBottom ? y + h - CAP_H : y;
+      g.fillStyle = "rgb(92,184,72)"; g.fillRect(x - 5, cy, w + 10, CAP_H); g.strokeRect(x - 5, cy, w + 10, CAP_H);
+    };
+    part(this.x, 0, PIPE_W, this.top, true);
+    part(this.x, this.top + this.gap, PIPE_W, PLAY_H - this.top - this.gap, false);
+  }
+}
+
+// ---- Paralaks arka plan ----
+class Background {
+  constructor() {
+    const r = rng(7);
+    this.clouds = [0, 1, 2, 3, 4].map(i => ({ x: i * LOGICAL_W / 4 + Math.floor(r() * 60), y: 40 + Math.floor(r() * 160), s: 0.7 + r() * 0.6 }));
+    this.buildings = Array.from({ length: 16 }, () => 40 + Math.floor(r() * 80));
+    this.co = 0; this.ci = 0; this.ho = 0;
+  }
+  update(speed) {
+    this.co = (this.co + speed * 0.15) % (LOGICAL_W + 120);
+    this.ci = (this.ci + speed * 0.35) % (this.buildings.length * 40);
+    this.ho = (this.ho + speed * 0.6) % 240;
+  }
+  draw(g) {
+    const span = LOGICAL_W + 120;
+    g.fillStyle = "rgba(255,255,255,0.92)";
+    for (const c of this.clouds) {
+      const x = ((c.x - this.co) % span + span) % span - 60, w = 70 * c.s, h = 26 * c.s;
+      ellipse(g, x, c.y, w, h, g.fillStyle); ellipse(g, x + w * .25, c.y - h * .45, w * .55, h * 1.1, g.fillStyle);
+      ellipse(g, x + w * .5, c.y - h * .2, w * .5, h * .9, g.fillStyle);
+    }
+    for (let i = 0; i < this.buildings.length * 2; i++) {
+      const x = i * 40 - this.ci; if (x > LOGICAL_W) break; if (x < -40) continue;
+      const h = this.buildings[i % this.buildings.length];
+      g.fillStyle = "rgb(150,205,215)"; g.fillRect(x, PLAY_H - 30 - h, 36, h + 30);
+      g.fillStyle = "rgb(185,225,230)";
+      for (let wy = PLAY_H - 22 - h; wy < PLAY_H - 30; wy += 16) { g.fillRect(x + 6, wy, 8, 8); g.fillRect(x + 22, wy, 8, 8); }
+    }
+    for (let x = -this.ho - 120; x < LOGICAL_W + 120; x += 240) {
+      ellipse(g, x + 110, PLAY_H - 50, 200, 100, "rgb(95,175,90)");
+      ellipse(g, x, PLAY_H - 40, 180, 80, "rgb(120,200,110)");
+    }
+  }
+}
+
+// ---- Ses (Web Audio API ile üretilen tonlar) ----
+const Sound = {
+  ctx: null, muted: localStorage.getItem("fb-muted") === "1",
+  ensure() { if (!this.ctx) { try { this.ctx = new (window.AudioContext || window.webkitAudioContext)(); } catch { } } if (this.ctx?.state === "suspended") this.ctx.resume(); },
+  sweep(f0, f1, dur, vol, type = "sine", delay = 0) {
+    if (this.muted || !this.ctx) return;
+    const t = this.ctx.currentTime + delay, o = this.ctx.createOscillator(), g = this.ctx.createGain();
+    o.type = type; o.frequency.setValueAtTime(f0, t); o.frequency.linearRampToValueAtTime(f1, t + dur);
+    g.gain.setValueAtTime(0.0001, t); g.gain.linearRampToValueAtTime(vol, t + 0.005); g.gain.linearRampToValueAtTime(0.0001, t + dur);
+    o.connect(g).connect(this.ctx.destination); o.start(t); o.stop(t + dur + 0.02);
+  },
+  flap() { this.sweep(520, 880, 0.08, 0.2); },
+  point() { this.sweep(988, 988, 0.07, 0.18); this.sweep(1319, 1319, 0.12, 0.18, "sine", 0.07); },
+  hit() { this.sweep(300, 70, 0.3, 0.15, "square"); },
+};
+
+// ---- Rekorlar (localStorage, zorluk başına) ----
+const Best = {
+  get(d) { return parseInt(localStorage.getItem("fb-best-" + d.name) || "0", 10) || 0; },
+  set(d, v) { try { localStorage.setItem("fb-best-" + d.name, String(v)); } catch { } },
+};
+
+// ---- Otomatik pilot (C# AutoPilot sınıfının karşılığı) ----
+function autoPilotShouldFlap(game) {
+  const bird = game.bird, pipes = game.pipes, speed = game.speed, LOOK = 36, failed = new Set();
+  const step = (t, y, v, flap) => {
+    let nv = Math.min((flap ? FLAP : v) + GRAVITY, MAX_FALL), ny = y + nv;
+    if (ny < 0) { ny = 0; nv = 0; }
+    if (ny + bird.h >= PLAY_H) return null;
+    const bx = bird.x + speed * (t + 1);
+    for (const p of pipes) if (p.collides(bird, bx, ny)) return null;
+    return [ny, nv];
+  };
+  const safe = (t, y, v) => {
+    if (t === LOOK) return true;
+    const key = t + "|" + (y | 0) + "|" + ((v * 2) | 0);
+    if (failed.has(key)) return false;
+    for (const f of [false, true]) { const r = step(t, y, v, f); if (r && safe(t + 1, r[0], r[1])) return true; }
+    failed.add(key); return false;
+  };
+  const next = pipes.filter(p => p.x + PIPE_W > bird.x).sort((a, b) => a.x - b.x)[0];
+  const target = next ? next.top + next.gap * 0.6 : PLAY_H / 2;
+  const prefer = bird.y + bird.h / 2 > target && bird.v >= 0;
+  for (const f of [prefer, !prefer]) { const r = step(0, bird.y, bird.v, f); if (r && safe(1, r[0], r[1])) return f; }
+  return bird.y > PLAY_H / 2 && bird.v >= 0;
+}
+
+// ---- Oyun yöneticisi ----
+const game = {
+  bird: new Bird(LOGICAL_W / 4, PLAY_H / 2), pipes: [], state: State.Ready, score: 0, speed: 4,
+  diff: Difficulties[parseInt(localStorage.getItem("fb-diff") || "1", 10)] || Difficulties[1],
+  best: 0, newBest: false, autoPilot: false, autoUsed: false,
+  get level() { return Math.floor(this.score / 5) + 1; },
+  reset() {
+    this.bird.reset(); this.score = 0; this.speed = this.diff.base; this.newBest = false; this.autoUsed = this.autoPilot;
+    this.pipes = [];
+    for (let i = 0; i < 3; i++) {
+      const p = new Pipe(LOGICAL_W + 100 + i * this.diff.spacing, this.diff.gap);
+      if (i > 0) p.reposition(p.x, this.pipes[i - 1].top);
+      this.pipes.push(p);
+    }
+    this.best = Best.get(this.diff); ui();
+  },
+  setDifficulty(i) {
+    if (this.state === State.Playing || this.state === State.Paused) return;
+    this.diff = Difficulties[i]; localStorage.setItem("fb-diff", String(i)); this.state = State.Ready; this.reset();
+  },
+  start() { this.reset(); this.state = State.Playing; ui(); },
+  flap() {
+    if (this.state === State.Ready) { this.state = State.Playing; this.bird.flap(); Sound.flap(); ui(); }
+    else if (this.state === State.Playing) { this.bird.flap(); Sound.flap(); }
+  },
+  togglePause() {
+    if (this.state === State.Playing) this.state = State.Paused;
+    else if (this.state === State.Paused) this.state = State.Playing;
+    ui();
+  },
+  toggleAuto() {
+    this.autoPilot = !this.autoPilot; if (this.autoPilot) this.autoUsed = true;
+    if (this.autoPilot && this.state === State.Ready) this.flap();
+    else if (this.autoPilot && this.state === State.GameOver) this.start();
+    ui();
+  },
+  update() {
+    if (this.state !== State.Playing) return;
+    if (this.autoPilot && autoPilotShouldFlap(this)) this.flap();
+    this.bird.update();
+    for (const p of this.pipes) {
+      p.x -= this.speed;
+      if (!p.passed && p.x + PIPE_W < this.bird.x) {
+        p.passed = true; const old = this.level; this.score++;
+        if (this.level > old) this.speed = Math.min(this.diff.base + (this.level - 1) * this.diff.step, this.diff.max);
+        Sound.point(); ui();
+      }
+    }
+    for (const p of this.pipes) if (p.x + PIPE_W < 0) {
+      const last = this.pipes.reduce((a, b) => a.x > b.x ? a : b);
+      p.reposition(last.x + this.diff.spacing, last.top);
+    }
+    if (this.bird.y + this.bird.h >= PLAY_H || this.pipes.some(p => p.collides(this.bird))) this.end();
+  },
+  end() {
+    this.state = State.GameOver; Sound.hit();
+    if (this.score > this.best && !this.autoUsed) { this.best = this.score; this.newBest = true; Best.set(this.diff, this.best); }
+    ui();
+  },
+};
+
+// ---- Arayüz ----
+const $ = id => document.getElementById(id);
+function ui() {
+  $("lblScore").textContent = "Skor: " + game.score;
+  $("lblBest").textContent = "En Yüksek: " + game.best;
+  $("lblLevel").textContent = game.diff.name + " • Sv " + game.level;
+  $("lblSpeed").textContent = "Hız: " + game.speed.toFixed(1).replace(".", ",");
+  $("btnSound").textContent = Sound.muted ? "Ses: Kapalı" : "Ses: Açık";
+  document.title = (game.autoPilot ? "[DEMO] " : "") + "Flappy Bird — YMH219";
+}
+
+// ---- Çizim ----
+const canvas = $("game"), ctx = canvas.getContext("2d"), bg = new Background();
+let scale = 1, offX = 0, offY = 0, groundOffset = 0, restartRect = null, chooserRects = [];
+function ellipse(g, x, y, w, h, fill, stroke, lw) {
+  g.beginPath(); g.ellipse(x + w / 2, y + h / 2, w / 2, h / 2, 0, 0, Math.PI * 2);
+  if (fill) { g.fillStyle = fill; g.fill(); } if (stroke) { g.strokeStyle = stroke; g.lineWidth = lw || 1; g.stroke(); }
+}
+function resize() {
+  const r = canvas.getBoundingClientRect(), dpr = window.devicePixelRatio || 1;
+  canvas.width = Math.round(r.width * dpr); canvas.height = Math.round(r.height * dpr);
+  scale = Math.min(canvas.width / LOGICAL_W, canvas.height / LOGICAL_H);
+  offX = (canvas.width - LOGICAL_W * scale) / 2; offY = (canvas.height - LOGICAL_H * scale) / 2;
+}
+function text(s, size, color, y, weight = 700) {
+  ctx.font = `${weight} ${size}px "Segoe UI", system-ui, sans-serif`; ctx.textAlign = "center"; ctx.textBaseline = "top";
+  ctx.fillStyle = "rgba(0,0,0,0.47)"; ctx.fillText(s, LOGICAL_W / 2 + 2, y + 2);
+  ctx.fillStyle = color; ctx.fillText(s, LOGICAL_W / 2, y);
+}
+function chooser(y) {
+  text("Zorluk (1 / 2 / 3 veya dokun):", 16, "white", y);
+  const bw = 90, gap = 10, total = 3 * bw + 2 * gap, x0 = (LOGICAL_W - total) / 2;
+  chooserRects = [];
+  Difficulties.forEach((d, i) => {
+    const r = [x0 + i * (bw + gap), y + 30, bw, 32]; chooserRects.push(r);
+    ctx.fillStyle = d === game.diff ? "rgba(255,140,0,0.9)" : "rgba(0,0,0,0.47)"; ctx.fillRect(...r);
+    ctx.font = '700 16px "Segoe UI", system-ui, sans-serif'; ctx.fillStyle = "white"; ctx.textBaseline = "middle";
+    ctx.fillText(`${i + 1}  ${d.name}`, r[0] + bw / 2, r[1] + 16);
+  });
+}
+function draw() {
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+  ctx.fillStyle = "#181a20"; ctx.fillRect(0, 0, canvas.width, canvas.height);
+  ctx.setTransform(scale, 0, 0, scale, offX, offY);
+  ctx.save(); ctx.beginPath(); ctx.rect(0, 0, LOGICAL_W, LOGICAL_H); ctx.clip();
+  ctx.fillStyle = "rgb(112,197,206)"; ctx.fillRect(0, 0, LOGICAL_W, LOGICAL_H);
+  bg.draw(ctx);
+  for (const p of game.pipes) p.draw(ctx);
+  ctx.fillStyle = "rgb(222,216,149)"; ctx.fillRect(0, PLAY_H, LOGICAL_W, GROUND_H);
+  ctx.fillStyle = "rgb(200,190,120)"; for (let x = -groundOffset; x < LOGICAL_W; x += 40) ctx.fillRect(x, PLAY_H + 22, 20, 8);
+  ctx.fillStyle = "rgb(115,191,46)"; ctx.fillRect(0, PLAY_H, LOGICAL_W, 12);
+  game.bird.draw(ctx);
+  restartRect = null; chooserRects = [];
+  switch (game.state) {
+    case State.Ready:
+      text("FLAPPY BIRD", 37, "white", 110);
+      text("Başlamak için BOŞLUK / ↑ / dokun", 16, "white", 180);
+      text("Duraklat: P   •   Yeniden: Enter", 16, "white", 210);
+      text("Ses: M   •   Tam ekran: F", 16, "white", 240);
+      text("Demo (otomatik pilot): D", 16, "white", 270);
+      chooser(380); break;
+    case State.Playing:
+      text(String(game.score), 48, "white", 40);
+      if (game.autoPilot) text("DEMO • kapatmak için D", 16, "gold", 100);
+      break;
+    case State.Paused:
+      text(String(game.score), 48, "white", 40);
+      text("DURAKLATILDI", 37, "white", 260); text("Devam için P", 16, "white", 315); break;
+    case State.GameOver: {
+      ctx.fillStyle = "rgba(0,0,0,0.67)"; ctx.fillRect(LOGICAL_W / 2 - 160, 170, 320, 210);
+      text("GAME OVER", 37, "orangered", 190);
+      text("Skor: " + game.score, 16, "white", 260);
+      text("En Yüksek: " + game.best, 16, "gold", 290);
+      if (game.newBest) text("Yeni rekor!", 16, "lightgreen", 325);
+      else if (game.autoUsed) text("Demo oyunu rekora sayılmaz", 16, "lightgray", 325);
+      restartRect = [LOGICAL_W / 2 - 75, 400, 150, 45];
+      ctx.fillStyle = "orangered"; ctx.fillRect(...restartRect);
+      ctx.font = '700 16px "Segoe UI", system-ui, sans-serif'; ctx.fillStyle = "white"; ctx.textBaseline = "middle";
+      ctx.fillText("Yeniden Başlat", LOGICAL_W / 2, 422);
+      text("Enter / R ile de yeniden başlayabilirsin", 16, "white", 470);
+      chooser(510); break;
+    }
+  }
+  ctx.restore();
+}
+
+// ---- Sabit adımlı oyun döngüsü ----
+let last = performance.now() / 1000, acc = 0;
+function frame() {
+  const now = performance.now() / 1000; acc += now - last; last = now;
+  let steps = 0;
+  while (acc >= STEP && steps < MAX_STEPS) {
+    game.update();
+    if (game.state === State.Playing || game.state === State.Ready) {
+      groundOffset = (groundOffset + game.speed) % 40; bg.update(game.speed);
+      game.bird.animate(game.state === State.Ready);
+    }
+    acc -= STEP; steps++;
+  }
+  if (steps === MAX_STEPS) acc = 0;
+  draw(); requestAnimationFrame(frame);
+}
+
+// ---- Girdi ----
+function toggleFull() {
+  if (document.fullscreenElement) document.exitFullscreen(); else document.documentElement.requestFullscreen?.();
+}
+function toggleSound() { Sound.muted = !Sound.muted; localStorage.setItem("fb-muted", Sound.muted ? "1" : "0"); ui(); }
+document.addEventListener("keydown", e => {
+  Sound.ensure();
+  switch (e.code) {
+    case "Space": case "ArrowUp": case "KeyW": game.flap(); break;
+    case "Enter": case "KeyR": if (game.state === State.GameOver || game.state === State.Ready) game.start(); break;
+    case "KeyP": case "Escape": game.togglePause(); break;
+    case "Digit1": case "Numpad1": game.setDifficulty(0); break;
+    case "Digit2": case "Numpad2": game.setDifficulty(1); break;
+    case "Digit3": case "Numpad3": game.setDifficulty(2); break;
+    case "KeyD": game.toggleAuto(); break;
+    case "KeyM": toggleSound(); break;
+    case "KeyF": case "F11": toggleFull(); break;
+    default: return;
+  }
+  e.preventDefault();
+});
+canvas.addEventListener("pointerdown", e => {
+  Sound.ensure();
+  const r = canvas.getBoundingClientRect(), dpr = window.devicePixelRatio || 1;
+  const x = ((e.clientX - r.left) * dpr - offX) / scale, y = ((e.clientY - r.top) * dpr - offY) / scale;
+  const hit = rc => rc && x >= rc[0] && x <= rc[0] + rc[2] && y >= rc[1] && y <= rc[1] + rc[3];
+  const ci = chooserRects.findIndex(hit);
+  if (ci >= 0) { game.setDifficulty(ci); return; }
+  if (hit(restartRect)) { game.start(); return; }
+  if (game.state === State.GameOver) return;
+  game.flap();
+});
+$("btnSound").onclick = e => { toggleSound(); e.target.blur(); };
+$("btnFull").onclick = e => { toggleFull(); e.target.blur(); };
+document.addEventListener("visibilitychange", () => { if (document.hidden && game.state === State.Playing) game.togglePause(); });
+window.addEventListener("resize", resize);
+
+resize(); game.reset(); requestAnimationFrame(frame);
+// ?demo=1 adresiyle açılırsa oyun doğrudan demo modunda başlar (tanıtım için)
+if (new URLSearchParams(location.search).has("demo")) game.toggleAuto();
+</script>
+</body>
+</html>

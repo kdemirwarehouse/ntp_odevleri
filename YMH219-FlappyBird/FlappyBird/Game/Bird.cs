@@ -9,12 +9,16 @@ namespace FlappyBird.Game
     public class Bird
     {
         // Fizik sabitleri
-        private const float Gravity = 0.55f;       // Her karede hıza eklenen yer çekimi
-        private const float FlapStrength = -8.5f;  // Zıplama anında verilen yukarı hız
-        private const float MaxFallSpeed = 12f;    // Düşüş hızının üst sınırı
+        public const float Gravity = 0.55f;       // Her karede hıza eklenen yer çekimi
+        public const float FlapStrength = -8.5f;  // Zıplama anında verilen yukarı hız
+        public const float MaxFallSpeed = 12f;    // Düşüş hızının üst sınırı
 
         private readonly float startX;
         private readonly float startY;
+
+        // Animasyon durumu
+        private float wingPhase;     // Kanat çırpma döngüsünün açısı (radyan)
+        private float hoverPhase;    // Hazır ekranında süzülme hareketi
 
         public float X { get; private set; }
         public float Y { get; private set; }
@@ -23,11 +27,43 @@ namespace FlappyBird.Game
         public int Height { get; } = 28;
 
         /// <summary>
-        /// Çarpışma kontrolünde kullanılan dikdörtgen.
-        /// Kenarlardan biraz küçültülerek oyuncuya karşı daha adil hale getirildi.
+        /// Kuşu kaba olarak çevreleyen dikdörtgen (ön kontrol için).
         /// </summary>
         public Rectangle Bounds =>
-            new Rectangle((int)X + 4, (int)Y + 4, Width - 8, Height - 8);
+            new Rectangle((int)X, (int)Y, Width, Height);
+
+        /// <summary>Kuşun gövdesini temsil eden elipsin merkezi ve yarıçapları.</summary>
+        public float CenterX => X + Width / 2f;
+        public float CenterY => Y + Height / 2f;
+        public float RadiusX => Width / 2f - 1f;
+        public float RadiusY => Height / 2f - 1f;
+
+        /// <summary>
+        /// Kuşun elips şeklindeki gövdesi verilen dikdörtgene değiyor mu?
+        /// Dikdörtgen (AABB) yerine elips kullanıldığı için köşelerdeki boşluk
+        /// artık çarpışma sayılmaz. Hesap: koordinatlar yarıçaplara bölünerek elips
+        /// birim çembere dönüştürülür, sonra çember-dikdörtgen testi yapılır.
+        /// </summary>
+        public bool Intersects(RectangleF rect)
+        {
+            if (rect.Width <= 0 || rect.Height <= 0)
+                return false;
+
+            // Dikdörtgen üzerinde elips merkezine en yakın nokta
+            float nearestX = Math.Clamp(CenterX, rect.Left, rect.Right);
+            float nearestY = Math.Clamp(CenterY, rect.Top, rect.Bottom);
+
+            float dx = (nearestX - CenterX) / RadiusX;
+            float dy = (nearestY - CenterY) / RadiusY;
+            return dx * dx + dy * dy <= 1f;
+        }
+
+        /// <summary>Test ve özel durumlar için kuşu doğrudan konumlandırır.</summary>
+        public void SetPosition(float x, float y)
+        {
+            X = x;
+            Y = y;
+        }
 
         public Bird(float startX, float startY)
         {
@@ -42,6 +78,24 @@ namespace FlappyBird.Game
             X = startX;
             Y = startY;
             Velocity = 0;
+            wingPhase = 0;
+            hoverPhase = 0;
+        }
+
+        /// <summary>
+        /// Her karede çağrılan animasyon adımı. Kanat, kuş yükselirken hızlı,
+        /// düşerken yavaş çırpar. <paramref name="hovering"/> true ise (Hazır ekranı)
+        /// kuş başlangıç yüksekliğinde hafifçe aşağı yukarı süzülür.
+        /// </summary>
+        public void Animate(bool hovering)
+        {
+            wingPhase += Velocity < 0 || hovering ? 0.45f : 0.18f;
+
+            if (hovering)
+            {
+                hoverPhase += 0.08f;
+                Y = startY + MathF.Sin(hoverPhase) * 6f;
+            }
         }
 
         /// <summary>Kuşu yukarı doğru sıçratır.</summary>
@@ -84,9 +138,14 @@ namespace FlappyBird.Game
             using (var outline = new Pen(Color.DarkGoldenrod, 2))
                 g.DrawEllipse(outline, 0, 0, Width, Height);
 
-            // Kanat
+            // Kanat: sinüs dalgasıyla yukarı-aşağı çırpar (3 kareli sprite yerine sürekli animasyon)
+            float flap = MathF.Sin(wingPhase);
+            float wingHeight = 6 + 6 * MathF.Abs(flap);
+            float wingY = Height / 2f - 2 - flap * 7f;
             using (var wing = new SolidBrush(Color.Orange))
-                g.FillEllipse(wing, 4, Height / 2f - 2, 16, 10);
+                g.FillEllipse(wing, 3, wingY, 18, wingHeight);
+            using (var wingEdge = new Pen(Color.DarkOrange, 1.5f))
+                g.DrawEllipse(wingEdge, 3, wingY, 18, wingHeight);
 
             // Göz
             g.FillEllipse(Brushes.White, Width - 16, 4, 11, 11);

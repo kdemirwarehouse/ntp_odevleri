@@ -41,7 +41,7 @@ namespace FlappyBird
             //
             // gameTimer
             //
-            gameTimer.Interval = 16;
+            gameTimer.Interval = 10;
             gameTimer.Tick += GameTimer_Tick;
             //
             // infoPanel
@@ -80,9 +80,9 @@ namespace FlappyBird
             lblLevel.AutoSize = true;
             lblLevel.Font = new Font("Segoe UI", 11F, FontStyle.Bold);
             lblLevel.ForeColor = Color.LightGreen;
-            lblLevel.Location = new Point(260, 9);
+            lblLevel.Location = new Point(245, 9);
             lblLevel.Name = "lblLevel";
-            lblLevel.Text = "Seviye: 1";
+            lblLevel.Text = "Orta • Sv 1";
             //
             // lblSpeed
             //
@@ -95,7 +95,7 @@ namespace FlappyBird
             //
             // gamePanel
             //
-            gamePanel.BackColor = Color.FromArgb(112, 197, 206);
+            gamePanel.BackColor = Color.FromArgb(24, 26, 32);
             gamePanel.Controls.Add(btnRestart);
             gamePanel.Dock = DockStyle.Fill;
             gamePanel.Location = new Point(0, 40);
@@ -125,9 +125,9 @@ namespace FlappyBird
             ClientSize = new Size(480, 720);
             Controls.Add(gamePanel);
             Controls.Add(infoPanel);
-            FormBorderStyle = FormBorderStyle.FixedSingle;
+            FormBorderStyle = FormBorderStyle.Sizable;
             KeyPreview = true;
-            MaximizeBox = false;
+            MinimumSize = new Size(360, 520);
             Name = "GameForm";
             StartPosition = FormStartPosition.CenterScreen;
             Text = "Flappy Bird - YMH219";
