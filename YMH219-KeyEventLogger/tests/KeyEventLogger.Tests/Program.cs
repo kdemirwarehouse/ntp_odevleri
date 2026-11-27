@@ -22,6 +22,47 @@ DateTime SahteSaat() { simdi = simdi.AddSeconds(1); return simdi; }
 
 Console.WriteLine("KeyEventLogger testleri");
 
+Test("Kaydedilmemiş olay sayısı eklemeyle artar, kaydetme/temizlemeyle sıfırlanır", () =>
+{
+    var o = new KayitOturumu();
+    Dogrula(!o.KaydedilmemisDegisiklikVar, "Başta kaydedilmemiş olay olmamalı");
+    o.Baslat();
+    o.Ekle(OlayTuru.KeyDown, "A");
+    o.Ekle(OlayTuru.KeyUp, "A");
+    Dogrula(o.KaydedilmemisOlaySayisi == 2 && o.KaydedilmemisDegisiklikVar, "2 kaydedilmemiş olay olmalı");
+    o.KaydedildiOlarakIsaretle();
+    Dogrula(!o.KaydedilmemisDegisiklikVar && o.Kayitlar.Count == 2, "Kaydetme sonrası sayaç sıfır, kayıtlar duruyor olmalı");
+    o.Ekle(OlayTuru.KeyDown, "B");
+    o.Temizle();
+    Dogrula(o.KaydedilmemisOlaySayisi == 0, "Temizleme sayaç sıfırlamalı");
+});
+
+Test("Basılı tutulan tuşun ikinci KeyDown'ı tekrar sayılır, KeyUp sonrası sıfırlanır", () =>
+{
+    var t = new TekrarAlgilayici();
+    Dogrula(!t.TusBasildi("A"), "İlk basım tekrar olmamalı");
+    Dogrula(t.TusBasildi("A") && t.SonBasimTekrar, "İkinci KeyDown tekrar olmalı");
+    Dogrula(!t.TusBasildi("ShiftKey"), "Farklı tuş tekrar değil");
+    t.TusBirakildi("A");
+    Dogrula(!t.TusBasildi("A"), "KeyUp sonrası yeni basım tekrar olmamalı");
+    t.Sifirla();
+    Dogrula(t.BasiliTusSayisi == 0 && !t.TusBasildi("ShiftKey"), "Sıfırlama sonrası basılı tuş kalmamalı");
+});
+
+Test("Tekrar olayları istatistikte fiziksel basım sayılmaz ve etiketlenir", () =>
+{
+    var o = new KayitOturumu();
+    o.Baslat();
+    o.Ekle(OlayTuru.KeyDown, "A", "KeyCode=65");
+    o.Ekle(OlayTuru.KeyDown, "A", "KeyCode=65", tekrar: true);
+    o.Ekle(OlayTuru.KeyDown, "A", "KeyCode=65", tekrar: true);
+    o.Ekle(OlayTuru.KeyUp, "A");
+    Dogrula(o.ToplamTusBasimi == 1, $"1 fiziksel basım beklenirdi, {o.ToplamTusBasimi}");
+    Dogrula(o.TekrarSayisi == 2, "2 tekrar beklenirdi");
+    Dogrula(o.EnSikTuslar()[0] == ("A", 1), "En sık tuş sayımı tekrarları içermemeli");
+    Dogrula(o.Kayitlar[1].SatirMetni().Contains("[tekrar]"), "Satırda [tekrar] etiketi olmalı");
+});
+
 Test("Oturum kapalı başlar ve olay kabul etmez", () =>
 {
     var o = new KayitOturumu();

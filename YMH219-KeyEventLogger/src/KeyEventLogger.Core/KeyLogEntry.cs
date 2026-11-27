@@ -12,11 +12,15 @@ public enum OlayTuru
 /// Tek bir klavye olayı kaydı. Değişmez (immutable) bir record olarak tanımlanmıştır;
 /// oluşturulduktan sonra içeriği değiştirilemez.
 /// </summary>
-public sealed record KeyLogEntry(DateTime Zaman, OlayTuru Tur, string Tus, string Ayrinti)
+/// <param name="Tekrar">Basılı tutma sonucu Windows'un ürettiği otomatik tekrar olayı mı?</param>
+public sealed record KeyLogEntry(DateTime Zaman, OlayTuru Tur, string Tus, string Ayrinti, bool Tekrar = false)
 {
+    /// <summary>Listede ve dosyada gösterilen ayrıntı (tekrar olaylarında "[tekrar]" etiketiyle).</summary>
+    public string GorunenAyrinti => Tekrar ? ("[tekrar] " + Ayrinti).TrimEnd() : Ayrinti;
+
     /// <summary>Dosyaya yazılan / listede gösterilen tek satırlık biçim.</summary>
     public string SatirMetni() =>
-        $"{Zaman:dd.MM.yyyy HH:mm:ss.fff}\t{Tur,-8}\t{Tus}\t{Ayrinti}";
+        $"{Zaman:dd.MM.yyyy HH:mm:ss.fff}\t{Tur,-8}\t{Tus}\t{GorunenAyrinti}";
 
     /// <summary>
     /// KeyPress ile gelen karakteri okunabilir hâle getirir.

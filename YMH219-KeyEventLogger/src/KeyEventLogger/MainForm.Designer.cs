@@ -29,6 +29,7 @@ namespace KeyEventLogger
             chkKeyDown = new CheckBox();
             chkKeyUp = new CheckBox();
             chkKeyPress = new CheckBox();
+            chkTekrarYoksay = new CheckBox();
             tblAna = new TableLayoutPanel();
             lblDeneme = new Label();
             txtDeneme = new TextBox();
@@ -73,6 +74,7 @@ namespace KeyEventLogger
             pnlUst.Controls.Add(chkKeyDown);
             pnlUst.Controls.Add(chkKeyUp);
             pnlUst.Controls.Add(chkKeyPress);
+            pnlUst.Controls.Add(chkTekrarYoksay);
             pnlUst.Dock = DockStyle.Top;
             pnlUst.Name = "pnlUst";
             pnlUst.Padding = new Padding(8, 8, 8, 4);
@@ -151,6 +153,14 @@ namespace KeyEventLogger
             chkKeyPress.Margin = new Padding(3, 8, 3, 3);
             chkKeyPress.Name = "chkKeyPress";
             chkKeyPress.Text = "KeyPress";
+            //
+            // chkTekrarYoksay
+            //
+            chkTekrarYoksay.AutoSize = true;
+            chkTekrarYoksay.Margin = new Padding(14, 8, 3, 3);
+            chkTekrarYoksay.Name = "chkTekrarYoksay";
+            chkTekrarYoksay.Text = "Basılı tutma tekrarlarını yok say";
+            chkTekrarYoksay.UseVisualStyleBackColor = true;
             //
             // tblAna
             //
@@ -356,6 +366,7 @@ namespace KeyEventLogger
             StartPosition = FormStartPosition.CenterScreen;
             Text = "Key Event Logger (Eğitsel)";
             Deactivate += MainForm_Deactivate;
+            FormClosing += MainForm_FormClosing;
             KeyDown += MainForm_KeyDown;
             KeyPress += MainForm_KeyPress;
             KeyUp += MainForm_KeyUp;
@@ -384,6 +395,7 @@ namespace KeyEventLogger
         private CheckBox chkKeyDown;
         private CheckBox chkKeyUp;
         private CheckBox chkKeyPress;
+        private CheckBox chkTekrarYoksay;
         private TableLayoutPanel tblAna;
         private Label lblDeneme;
         private TextBox txtDeneme;

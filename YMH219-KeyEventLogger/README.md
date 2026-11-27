@@ -11,9 +11,15 @@ Nesne Tabanlı Programlama (YMH 219) dersi ek uygulama ödevidir.
 | **Öğrenci numarası** | 240541007 |
 | **Ders** | Nesne Tabanlı Programlama (YMH 219) |
 
+### ▶ Tarayıcıda dene: **https://kdemirwarehouse.github.io/YMH219-KeyEventLogger/**
+
+Aynı mantığın tarayıcı sürümü (`web/index.html`): `keydown` / `keypress` / `keyup` olaylarını yalnızca **o sayfa
+odaktayken** listeler; tekrar algılama (`event.repeat`), istatistik, zaman filtresi ve `.txt` indirme içerir.
+Hiçbir veri sunucuya gönderilmez. GitHub Actions ile GitHub Pages'e yayınlanır.
+
 ## Ekran Görüntüleri
 
-| Kayıt açık — olaylar canlı listeleniyor | Kayıt durduruldu — zaman filtresi aktif |
+| Kayıt açık — tekrarlar (turuncu), ok/Tab/F1 ve KeyDown↔KeyPress eşleşmesi | Kayıt durduruldu — zaman filtresi aktif, kaydedilmemiş olay sayacı |
 |---|---|
 | ![Kayıt açık](docs/screenshots/01-kayit-acik.png) | ![Kayıt kapalı ve filtre](docs/screenshots/02-kayit-durduruldu-filtre.png) |
 
@@ -51,7 +57,7 @@ cd YMH219-KeyEventLogger
 dotnet run --project src/KeyEventLogger
 ```
 
-**Testler:** `dotnet run --project tests/KeyEventLogger.Tests` (10 test)
+**Testler:** `dotnet run --project tests/KeyEventLogger.Tests` (13 test)
 
 ## Temel Özellikler
 
@@ -67,6 +73,29 @@ dotnet run --project src/KeyEventLogger
    - **İstatistik:** toplam tuş basımı (KeyDown sayısı), kayıtlı olay sayısı ve en sık kullanılan 5 tuş
    - **Tarih/saat aralığına göre filtreleme**; filtre aktifken kaydetme yalnızca filtrelenmiş olayları yazar
 7. Bellek koruması: 5000 olayda kayıt otomatik durur.
+8. **Gezinme tuşları her durumda yakalanır:** kayıt açıkken ok tuşları ve Tab, tüm kontrollerin `PreviewKeyDown`
+   olayında `IsInputKey = true` yapılarak "girdi tuşu" sayılır; odak bir butonda olsa bile KeyDown/KeyUp oluşur.
+   Kayıt kapalıyken normal Tab/ok ile gezinme çalışır.
+9. **Basılı tutma tekrarlarının algılanması:** KeyUp gelmeden aynı tuşa ikinci KeyDown gelirse olay `[tekrar]`
+   etiketiyle (turuncu) listelenir. İstatistikteki tuş basımı ve en sık tuşlar yalnızca fiziksel basımları sayar.
+   **"Basılı tutma tekrarlarını yok say"** seçeneği açıkken tekrar KeyDown/KeyPress olayları hiç kaydedilmez.
+10. **Kapatırken kaydetme onayı:** dosyaya yazılmamış olay varken pencere kapatılırsa *Evet* (kaydet ve kapat),
+    *Hayır* (kaydetmeden kapat), *İptal* (açık kal) seçenekleri sunulur. İstatistik panelinde kaydedilmemiş
+    olay sayısı görünür. Güvenlik ilkesi korunur: kayıt diske yine yalnızca kullanıcı onayıyla yazılır.
+11. **KeyDown ↔ KeyPress ilişkisi gösterilir:** karakter üretmeyen tuşların (Shift, Ctrl, F1, oklar…) KeyDown
+    satırında *"karakter üretmez → KeyPress olmaz"* notu yer alır (Win32 `MapVirtualKey` ile belirlenir);
+    her KeyPress satırında da onu üreten KeyDown tuşu (`← KeyDown: A`) yazılır.
+
+### Windows klavye olay modeli (özet)
+
+| Olay | Ne zaman oluşur? | Bilgi |
+|---|---|---|
+| `KeyDown` | Her fiziksel tuş basımında (basılı tutulursa tekrar eder) | `KeyCode`, `Modifiers` |
+| `KeyPress` | Yalnızca tuş bir **karakter** ürettiğinde (`WM_CHAR`) | `KeyChar` |
+| `KeyUp` | Tuş bırakıldığında | `KeyCode` |
+
+Bu yüzden Shift, Ctrl, F1 gibi tuşlarda KeyPress görülmemesi bir eksiklik değil, Windows'un olay modelidir;
+uygulama bunu her satırda açıkça gösterir.
 
 ## Proje Yapısı
 
@@ -77,11 +106,14 @@ YMH219-KeyEventLogger/
 │   ├── KeyEventLogger.Core/        Arayüzden bağımsız mantık
 │   │   ├── KeyLogEntry.cs          Olay kaydı (record) + OlayTuru enum
 │   │   ├── KayitOturumu.cs         Başlat/Durdur/Temizle, sınır, istatistik, filtre
-│   │   └── KayitDosyasi.cs         .txt dosyasına yazma (StreamWriter)
+│   │   ├── KayitDosyasi.cs         .txt dosyasına yazma (StreamWriter)
+│   │   └── TekrarAlgilayici.cs     Basılı tutma (auto-repeat) olaylarını ayırt etme
 │   └── KeyEventLogger/             Windows Forms
 │       ├── MainForm.cs             Klavye olayları, butonlar, gösterge
 │       └── MainForm.Designer.cs
 ├── tests/KeyEventLogger.Tests/     Konsol test çalıştırıcısı
+├── web/index.html                 Tarayıcı sürümü (GitHub Pages)
+├── .github/workflows/pages.yml    web/ klasörünü GitHub Pages'e deploy eden iş akışı
 └── docs/screenshots/
 ```
 
@@ -89,8 +121,5 @@ Ayrıntılı açıklama: [KOD-REHBERI.md](KOD-REHBERI.md)
 
 ## Bilinen Sınırlamalar / Geliştirme Notları
 
-- Ok tuşları, Tab gibi gezinme tuşları odaktaki butona gidebilir ve Windows tarafından işlendiği için
-  her durumda `KeyDown` olayı üretmeyebilir (en iyi sonuç deneme alanı odaktayken alınır).
-- `KeyPress` yalnızca karakter üreten tuşlarda oluşur; Shift, Ctrl, F1 gibi tuşlar için yalnızca KeyDown/KeyUp gelir.
-- Tuşa basılı tutulduğunda Windows tekrar eden KeyDown/KeyPress olayları üretir; bunlar ayrı olay olarak listelenir.
-- Kayıtlar yalnızca bellekte tutulur; uygulama kapatılınca kaydedilmemiş olaylar kaybolur.
+- Masaüstü sürümü yalnızca Windows'ta çalışır (Windows Forms). Diğer platformlar için tarayıcı sürümü kullanılabilir.
+

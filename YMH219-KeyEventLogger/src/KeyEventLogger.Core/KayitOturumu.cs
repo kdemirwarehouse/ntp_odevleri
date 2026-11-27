@@ -31,6 +31,15 @@ public class KayitOturumu
     public IReadOnlyList<KeyLogEntry> Kayitlar => _kayitlar;
     public bool SinirDoldu => _kayitlar.Count >= Sinir;
 
+    /// <summary>Son başarılı kaydetmeden (veya temizlemeden) bu yana eklenen olay sayısı.</summary>
+    public int KaydedilmemisOlaySayisi { get; private set; }
+
+    /// <summary>Kapatırken kullanıcıya sorulması gereken, dosyaya yazılmamış olay var mı?</summary>
+    public bool KaydedilmemisDegisiklikVar => KaydedilmemisOlaySayisi > 0;
+
+    /// <summary>Kayıtlar dosyaya başarıyla yazıldıktan sonra çağrılır.</summary>
+    public void KaydedildiOlarakIsaretle() => KaydedilmemisOlaySayisi = 0;
+
     public void Baslat()
     {
         if (KayitAcik)
@@ -53,19 +62,24 @@ public class KayitOturumu
     }
 
     /// <summary>Ekrandaki/bellekteki kayıtları siler. Kayıt durumu değişmez.</summary>
-    public void Temizle() => _kayitlar.Clear();
+    public void Temizle()
+    {
+        _kayitlar.Clear();
+        KaydedilmemisOlaySayisi = 0;
+    }
 
     /// <summary>
     /// Kayıt açıksa olayı listeye ekler ve true döner. Kapalıysa olay yok sayılır.
     /// Sınır dolduğunda kayıt kendiliğinden durur.
     /// </summary>
-    public bool Ekle(OlayTuru tur, string tus, string ayrinti = "")
+    public bool Ekle(OlayTuru tur, string tus, string ayrinti = "", bool tekrar = false)
     {
         if (!KayitAcik)
             return false;
 
-        var kayit = new KeyLogEntry(_saat(), tur, string.IsNullOrEmpty(tus) ? "(bilinmiyor)" : tus, ayrinti ?? "");
+        var kayit = new KeyLogEntry(_saat(), tur, string.IsNullOrEmpty(tus) ? "(bilinmiyor)" : tus, ayrinti ?? "", tekrar);
         _kayitlar.Add(kayit);
+        KaydedilmemisOlaySayisi++;
         KayitEklendi?.Invoke(this, kayit);
 
         if (SinirDoldu)
@@ -75,12 +89,15 @@ public class KayitOturumu
 
     // ------------------------------------------------------------------ İstatistik
 
-    /// <summary>Fiziksel tuş basımı sayısı (KeyDown olayları).</summary>
-    public int ToplamTusBasimi => _kayitlar.Count(k => k.Tur == OlayTuru.KeyDown);
+    /// <summary>Fiziksel tuş basımı sayısı (tekrar olmayan KeyDown olayları).</summary>
+    public int ToplamTusBasimi => _kayitlar.Count(k => k.Tur == OlayTuru.KeyDown && !k.Tekrar);
 
-    /// <summary>En sık basılan tuşlar (KeyDown olaylarına göre), çoktan aza.</summary>
+    /// <summary>Basılı tutma nedeniyle oluşan tekrar olayı sayısı (KeyDown + KeyPress).</summary>
+    public int TekrarSayisi => _kayitlar.Count(k => k.Tekrar);
+
+    /// <summary>En sık basılan tuşlar (fiziksel KeyDown basımlarına göre), çoktan aza.</summary>
     public List<(string Tus, int Adet)> EnSikTuslar(int adet = 5) =>
-        _kayitlar.Where(k => k.Tur == OlayTuru.KeyDown)
+        _kayitlar.Where(k => k.Tur == OlayTuru.KeyDown && !k.Tekrar)
                  .GroupBy(k => k.Tus)
                  .Select(g => (Tus: g.Key, Adet: g.Count()))
                  .OrderByDescending(x => x.Adet)

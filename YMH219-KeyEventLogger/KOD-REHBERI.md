@@ -24,6 +24,18 @@
 - `using var yazici = new StreamWriter(yol, false, new UTF8Encoding(true))` → Türkçe karakterler bozulmaz, `using` dosyayı kapatır.
 - Formda `IOException` / `UnauthorizedAccessException` yakalanır, kayıtlar bellekte korunur.
 
+## Yeni eklenen özellikler (kod düzeyinde)
+
+- **Ok tuşları / Tab:** `GezinmeTuslariniYakala` tüm kontrollerin `PreviewKeyDown` olayına bağlanır; kayıt açıkken bu tuşlar için
+  `e.IsInputKey = true` yapılır. Böylece Windows onları "iletişim kutusu tuşu" olarak işleyip odağı taşımaz, KeyDown/KeyUp oluşur.
+- **Tekrar algılama — `TekrarAlgilayici.cs` (Core):** basılı tuşlar `HashSet` içinde; KeyUp gelmeden aynı tuşa KeyDown gelirse tekrar.
+  `Deactivate`'te küme temizlenir (odak dışında bırakılan tuşun KeyUp'ı gelmez). `KeyLogEntry.Tekrar` → `[tekrar]` etiketi;
+  istatistikler `!Tekrar` olan KeyDown'ları sayar.
+- **KeyPress ilişkisi:** `MapVirtualKey(vk, MAPVK_VK_TO_CHAR)` 0 dönerse tuş karakter üretmez → satıra not düşülür.
+  Son KeyDown tuşu saklanıp KeyPress satırına `← KeyDown: X` yazılır.
+- **Kapatma onayı:** `KayitOturumu.KaydedilmemisOlaySayisi` her `Ekle`'de artar, başarılı kayıt / temizlemede sıfırlanır.
+  `FormClosing`'de > 0 ise Evet/Hayır/İptal; İptal veya başarısız kayıtta `e.Cancel = true`.
+
 ## Olası küçük değişiklik soruları
 
 - *"Sadece harfleri kaydet"*: `MainForm_KeyDown` içinde `if (e.KeyCode < Keys.A || e.KeyCode > Keys.Z) return;`

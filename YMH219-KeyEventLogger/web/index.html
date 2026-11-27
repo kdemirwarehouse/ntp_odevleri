@@ -1,0 +1,232 @@
+<!doctype html>
+<html lang="tr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Key Event Logger (Eğitsel) — YMH219 Web Sürümü</title>
+<meta name="description" content="Tarayıcıdaki keydown, keypress ve keyup olaylarını yalnızca bu sayfa içinde gösteren eğitsel uygulama.">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect x='8' y='22' width='84' height='56' rx='10' fill='%23005aaa'/><g fill='white'><rect x='18' y='32' width='12' height='10' rx='2'/><rect x='36' y='32' width='12' height='10' rx='2'/><rect x='54' y='32' width='12' height='10' rx='2'/><rect x='72' y='32' width='10' height='10' rx='2'/><rect x='26' y='56' width='48' height='10' rx='2'/></g></svg>">
+<style>
+  :root {
+    --bg: #f4f5f7; --panel: #fff; --ink: #1f2328; --muted: #656d76; --line: #d0d7de;
+    --down: #005aaa; --up: #6e6e6e; --press: #00803c; --rep: #aa7828; --rec: #c82323;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg: #0d1117; --panel: #161b22; --ink: #e6edf3; --muted: #8d96a0; --line: #30363d;
+      --down: #58a6ff; --up: #9da5ae; --press: #3fb950; --rep: #d29922; }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; font: 14px/1.45 "Segoe UI", system-ui, -apple-system, sans-serif; background: var(--bg); color: var(--ink); }
+  header { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; padding: 10px 14px; background: var(--panel); border-bottom: 1px solid var(--line); }
+  .badge { font-weight: 700; padding: 6px 12px; border-radius: 6px; color: #fff; background: dimgray; min-width: 150px; text-align: center; }
+  .badge.on { background: var(--rec); }
+  button { font: inherit; padding: 6px 12px; border-radius: 6px; border: 1px solid var(--line); background: var(--panel); color: var(--ink); cursor: pointer; }
+  button:hover:not(:disabled) { border-color: var(--down); }
+  button:disabled { opacity: .45; cursor: default; }
+  label.chk { display: inline-flex; gap: 4px; align-items: center; margin-left: 6px; user-select: none; }
+  .sep { color: var(--muted); margin-left: 8px; }
+  main { display: grid; grid-template-columns: 1fr 290px; gap: 12px; padding: 12px 14px; height: calc(100vh - 110px); min-height: 460px; }
+  @media (max-width: 860px) { main { grid-template-columns: 1fr; height: auto; } }
+  .col { display: flex; flex-direction: column; gap: 8px; min-height: 0; }
+  textarea { width: 100%; height: 64px; resize: none; font: 15px "Segoe UI", system-ui, sans-serif; padding: 8px; border-radius: 6px; border: 1px solid var(--line); background: var(--panel); color: var(--ink); }
+  .table { flex: 1; overflow: auto; background: var(--panel); border: 1px solid var(--line); border-radius: 6px; min-height: 240px; }
+  table { width: 100%; border-collapse: collapse; font: 12.5px Consolas, "Cascadia Mono", monospace; }
+  th { position: sticky; top: 0; background: var(--panel); text-align: left; padding: 6px 8px; border-bottom: 1px solid var(--line); font-family: "Segoe UI", system-ui, sans-serif; }
+  td { padding: 3px 8px; border-bottom: 1px solid color-mix(in srgb, var(--line) 45%, transparent); white-space: nowrap; }
+  tr.KeyDown td { color: var(--down); } tr.KeyUp td { color: var(--up); } tr.KeyPress td { color: var(--press); }
+  tr.rep td { color: var(--rep); }
+  fieldset { border: 1px solid var(--line); border-radius: 6px; background: var(--panel); margin: 0; padding: 8px 12px 12px; }
+  legend { font-weight: 600; padding: 0 4px; }
+  ol { margin: 6px 0 0; padding-left: 22px; min-height: 90px; }
+  .row { display: grid; grid-template-columns: 70px 1fr; gap: 6px; align-items: center; margin: 6px 0; }
+  input[type=datetime-local] { font: inherit; padding: 3px; border: 1px solid var(--line); border-radius: 4px; background: var(--panel); color: var(--ink); }
+  .note { font-size: 12.5px; color: var(--muted); }
+  footer { padding: 6px 14px; border-top: 1px solid var(--line); background: var(--panel); color: var(--muted); font-size: 12.5px; display: flex; gap: 12px; justify-content: space-between; flex-wrap: wrap; }
+  footer a { color: var(--down); }
+</style>
+</head>
+<body>
+<header>
+  <span class="badge" id="badge">■&nbsp; KAYIT KAPALI</span>
+  <button id="btnStart">▶ Başlat</button>
+  <button id="btnStop" disabled>■ Durdur</button>
+  <button id="btnClear">Temizle</button>
+  <button id="btnSave">.txt Olarak Kaydet</button>
+  <span class="sep">Yakalanan olaylar:</span>
+  <label class="chk"><input type="checkbox" id="chkDown" checked> keydown</label>
+  <label class="chk"><input type="checkbox" id="chkUp" checked> keyup</label>
+  <label class="chk"><input type="checkbox" id="chkPress" checked> keypress</label>
+  <label class="chk" style="margin-left:14px"><input type="checkbox" id="chkRep"> Basılı tutma tekrarlarını yok say</label>
+</header>
+<main>
+  <section class="col">
+    <label for="trial">Deneme alanı (kişisel bilgi veya parola yazmayın):</label>
+    <textarea id="trial" placeholder="Başlat'a basıp buraya yazın…"></textarea>
+    <div class="table">
+      <table>
+        <thead><tr><th>Zaman</th><th>Olay</th><th>Tuş</th><th>Ayrıntı</th></tr></thead>
+        <tbody id="rows"></tbody>
+      </table>
+    </div>
+  </section>
+  <aside class="col">
+    <fieldset>
+      <legend>İstatistik</legend>
+      <div id="statPress">Tuş basımı: 0 (tekrar: 0)</div>
+      <div id="statCount">Olay: 0 / 5000 (kaydedilmemiş: 0)</div>
+      <div style="margin-top:6px">En sık kullanılan 5 tuş:</div>
+      <ol id="top"></ol>
+    </fieldset>
+    <fieldset>
+      <legend>Zaman aralığına göre filtrele</legend>
+      <div class="row"><span>Başlangıç:</span><input type="datetime-local" id="dtFrom" step="1"></div>
+      <div class="row"><span>Bitiş:</span><input type="datetime-local" id="dtTo" step="1"></div>
+      <button id="btnFilter">Filtrele</button>
+      <button id="btnUnfilter" disabled>Filtreyi Kaldır</button>
+    </fieldset>
+    <p class="note">Eğitsel uygulama: olaylar yalnızca <b>bu sayfa</b> odaktayken ve kayıt açıkken yakalanır.
+      Sayfa arka plana geçince kayıt durur. Parola alanlarında kayıt yapılmaz. Hiçbir veri sunucuya gönderilmez;
+      dosya yalnızca siz <i>Kaydet</i>'e basarsanız bilgisayarınıza indirilir.</p>
+  </aside>
+</main>
+<footer>
+  <span id="status">Hazır. Kayda başlamak için Başlat'a basın.</span>
+  <span>Windows Forms sürümünün (C#) tarayıcı portu — YMH 219 · <a href="https://github.com/kdemirwarehouse/YMH219-KeyEventLogger" target="_blank" rel="noopener">GitHub</a></span>
+</footer>
+<script>
+"use strict";
+// C# sürümündeki KayitOturumu, TekrarAlgilayici ve KayitDosyasi sınıflarının JavaScript karşılığı.
+const LIMIT = 5000;
+const $ = id => document.getElementById(id);
+const session = {
+  open: false, entries: [], unsaved: 0,
+  add(type, key, detail, rep = false) {
+    if (!this.open) return false;
+    const e = { time: new Date(), type, key: key || "(bilinmiyor)", detail: detail || "", rep };
+    this.entries.push(e); this.unsaved++;
+    onAdded(e);
+    if (this.entries.length >= LIMIT) { stop(); status(`Kayıt sınırına (${LIMIT} olay) ulaşıldı, kayıt durduruldu.`); }
+    return true;
+  },
+  get presses() { return this.entries.filter(e => e.type === "KeyDown" && !e.rep).length; },
+  get repeats() { return this.entries.filter(e => e.rep).length; },
+  top(n = 5) {
+    const m = new Map();
+    for (const e of this.entries) if (e.type === "KeyDown" && !e.rep) m.set(e.key, (m.get(e.key) || 0) + 1);
+    return [...m].sort((a, b) => b[1] - a[1] || (a[0] < b[0] ? -1 : 1)).slice(0, n);
+  },
+  filter(from, to) { return this.entries.filter(e => e.time >= from && e.time <= to); },
+};
+let filterOn = false, lastDownKey = null;
+
+const pad = (n, w = 2) => String(n).padStart(w, "0");
+const fmt = d => `${pad(d.getDate())}.${pad(d.getMonth() + 1)}.${d.getFullYear()} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}.${pad(d.getMilliseconds(), 3)}`;
+const shown = e => e.rep ? ("[tekrar] " + e.detail).trim() : e.detail;
+const keyName = k => ({ " ": "[Boşluk]", "Enter": "[Enter]", "Tab": "[Tab]", "Backspace": "[Backspace]", "Escape": "[Esc]" })[k] ?? k;
+const status = s => $("status").textContent = s;
+
+function row(e) {
+  const tr = document.createElement("tr");
+  tr.className = e.type + (e.rep ? " rep" : "");
+  for (const v of [fmt(e.time), e.type, e.key, shown(e)]) { const td = document.createElement("td"); td.textContent = v; tr.appendChild(td); }
+  return tr;
+}
+function fill(list) {
+  const body = $("rows"); body.replaceChildren(...list.map(row));
+  body.parentElement.parentElement.scrollTop = 1e9;
+}
+function onAdded(e) {
+  if (!filterOn) { $("rows").appendChild(row(e)); $("rows").parentElement.parentElement.scrollTop = 1e9; }
+  stats();
+}
+function stats() {
+  $("statPress").textContent = `Tuş basımı: ${session.presses} (tekrar: ${session.repeats})`;
+  $("statCount").textContent = `Olay: ${session.entries.length} / ${LIMIT} (kaydedilmemiş: ${session.unsaved})`;
+  $("top").replaceChildren(...session.top().map(([k, n]) => { const li = document.createElement("li"); li.textContent = `${k} — ${n} kez`; return li; }));
+}
+function indicator() {
+  const on = session.open;
+  $("badge").innerHTML = on ? "●&nbsp; KAYIT AÇIK" : "■&nbsp; KAYIT KAPALI";
+  $("badge").classList.toggle("on", on);
+  $("btnStart").disabled = on; $("btnStop").disabled = !on;
+  document.title = (on ? "● Kayıt açık — " : "") + "Key Event Logger (Eğitsel) — YMH219";
+}
+function start() {
+  if (session.entries.length >= LIMIT) { alert(`Kayıt sınırına (${LIMIT} olay) ulaşıldı. Kaydedip temizleyin.`); return; }
+  session.open = true; indicator(); status(`Kayıt başladı (${fmt(new Date()).slice(11, 19)}). Deneme alanına yazabilirsiniz.`);
+  $("trial").focus();
+}
+function stop() { if (!session.open) return; session.open = false; indicator(); }
+
+// Parola alanında kayıt yapılmaz
+const inPassword = () => document.activeElement instanceof HTMLInputElement && document.activeElement.type === "password";
+const mods = e => [e.ctrlKey && "Ctrl", e.shiftKey && "Shift", e.altKey && "Alt", e.metaKey && "Meta"].filter(Boolean).join("+");
+// Tek başına karakter üretmeyen tuşlar (key değeri birden fazla harfli adlardır: Shift, F1, ArrowUp …)
+const producesChar = e => e.key.length === 1 || ["Enter", "Tab", "Backspace", "Escape"].includes(e.key);
+
+document.addEventListener("keydown", e => {
+  if (!session.open || inPassword()) return;
+  // Kayıt açıkken Tab ve ok tuşları da kaydedilir; Tab sayfada odak değiştirmesin
+  if (e.key === "Tab" && document.activeElement === $("trial")) e.preventDefault();
+  if (!$("chkDown").checked || (e.repeat && $("chkRep").checked)) return;
+  let d = `code=${e.code}`;
+  const m = mods(e); if (m) d = `Değiştirici: ${m}  ${d}`;
+  if (!producesChar(e) || e.altKey) d += "  · karakter üretmez → keypress olmaz";
+  lastDownKey = e.code;
+  session.add("KeyDown", e.key === " " ? "Space" : e.key, d, e.repeat);
+}, true);
+document.addEventListener("keypress", e => {
+  if (!session.open || inPassword() || !$("chkPress").checked || (e.repeat && $("chkRep").checked)) return;
+  const ch = e.key === "Enter" ? "\r" : e.key;
+  const cp = ch.length ? ch.codePointAt(0).toString(16).toUpperCase().padStart(4, "0") : "----";
+  session.add("KeyPress", keyName(e.key), `Karakter kodu=U+${cp}${lastDownKey ? "  ← keydown: " + lastDownKey : ""}`, e.repeat);
+}, true);
+document.addEventListener("keyup", e => {
+  if (!session.open || inPassword() || !$("chkUp").checked) return;
+  session.add("KeyUp", e.key === " " ? "Space" : e.key, `code=${e.code}`);
+}, true);
+
+// Sayfa odağı kaybedilince güvenlik için kayıt durur
+window.addEventListener("blur", () => { if (session.open) { stop(); status("Sayfa odaktan çıktı; güvenlik için kayıt durduruldu. Devam etmek için Başlat'a basın."); } });
+// Kaydedilmemiş olay varken sekme kapatılırsa tarayıcı onay sorar
+window.addEventListener("beforeunload", e => { if (session.unsaved > 0) { e.preventDefault(); e.returnValue = ""; } });
+
+function download(list) {
+  const lines = ["# YMH219 Key Event Logger (web) - sayfa içi klavye olayları",
+    `# Dışa aktarma zamanı: ${fmt(new Date()).slice(0, 19)}`, `# Olay sayısı: ${list.length}`, "# Zaman\tOlay\tTuş\tAyrıntı",
+    ...list.map(e => `${fmt(e.time)}\t${e.type.padEnd(8)}\t${e.key}\t${shown(e)}`)];
+  const blob = new Blob(["﻿" + lines.join("\r\n") + "\r\n"], { type: "text/plain;charset=utf-8" });
+  const a = document.createElement("a"); const d = new Date();
+  a.download = `klavye-olaylari-${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}-${pad(d.getHours())}${pad(d.getMinutes())}${pad(d.getSeconds())}.txt`;
+  a.href = URL.createObjectURL(blob); a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+}
+const toLocalInput = d => new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 19);
+
+$("btnStart").onclick = start;
+$("btnStop").onclick = () => { stop(); status(`Kayıt durduruldu. ${session.entries.length} olay bellekte.`); };
+$("btnClear").onclick = () => {
+  if (!session.entries.length) { status("Temizlenecek kayıt yok."); return; }
+  session.entries = []; session.unsaved = 0; filterOn = false; $("btnUnfilter").disabled = true; fill([]); stats(); status("Ekrandaki kayıtlar temizlendi.");
+};
+$("btnSave").onclick = () => {
+  if (!session.entries.length) { alert("Kaydedilecek olay yok. Önce Başlat ile kayıt alın."); return; }
+  stop();
+  const list = filterOn ? session.filter(new Date($("dtFrom").value), new Date($("dtTo").value)) : session.entries;
+  download(list); if (!filterOn) session.unsaved = 0; stats();
+  status(`${list.length} olay .txt dosyası olarak indirildi.`);
+};
+$("btnFilter").onclick = () => {
+  const from = new Date($("dtFrom").value), to = new Date($("dtTo").value);
+  if (isNaN(from) || isNaN(to) || to < from) { alert("Bitiş zamanı başlangıç zamanından önce olamaz."); return; }
+  const list = session.filter(from, to); filterOn = true; $("btnUnfilter").disabled = false; fill(list);
+  status(`Filtre aktif: ${list.length} / ${session.entries.length} olay gösteriliyor. Filtre açıkken yeni olaylar listeye eklenmez.`);
+};
+$("btnUnfilter").onclick = () => { filterOn = false; $("btnUnfilter").disabled = true; fill(session.entries); status("Filtre kaldırıldı, tüm olaylar gösteriliyor."); };
+for (const b of document.querySelectorAll("button")) b.addEventListener("keydown", e => { if (session.open && (e.key === " " || e.key === "Enter")) e.preventDefault(); });
+
+$("dtFrom").value = toLocalInput(new Date(Date.now() - 10 * 60000));
+$("dtTo").value = toLocalInput(new Date(Date.now() + 10 * 60000));
+indicator(); stats();
+</script>
+</body>
+</html>

@@ -10,6 +10,24 @@ namespace KeyEventLogger;
 public partial class MainForm : Form
 {
     private readonly KayitOturumu _oturum = new();
+    private readonly TekrarAlgilayici _tekrar = new();
+    private string? _sonKeyDownTusu;   // KeyPress'i hangi KeyDown'ın ürettiğini göstermek için
+
+    [System.Runtime.InteropServices.DllImport("user32.dll")]
+    private static extern uint MapVirtualKey(uint uCode, uint uMapType);
+    private const uint MAPVK_VK_TO_CHAR = 2;
+
+    /// <summary>
+    /// Tuş tek başına bir karakter üretir mi? Üretmiyorsa (Shift, Ctrl, F1, oklar ...) Windows bu tuş için
+    /// WM_CHAR göndermez, dolayısıyla KeyPress olayı da oluşmaz. Ctrl ile birlikte basılan harfler ise
+    /// kontrol karakteri (Ctrl+A → U+0001) ürettiği için KeyPress oluşturur.
+    /// </summary>
+    private static bool KarakterUretirMi(Keys tus, Keys degistirici)
+    {
+        if (degistirici.HasFlag(Keys.Alt)) return false;
+        if (tus is Keys.Enter or Keys.Back or Keys.Tab or Keys.Escape or Keys.Space) return true;
+        return MapVirtualKey((uint)tus, MAPVK_VK_TO_CHAR) != 0;
+    }
     private bool _filtreAktif;
 
     public MainForm()
@@ -17,6 +35,10 @@ public partial class MainForm : Form
         InitializeComponent();
         _oturum.DurumDegisti += (_, _) => DurumGostergesiniGuncelle();
         _oturum.KayitEklendi += Oturum_KayitEklendi;
+
+        GezinmeTuslariniYakala(this);
+        lvKayitlar.Resize += (_, _) => AyrintiSutunuGenislet();
+        AyrintiSutunuGenislet();
 
         dtpBaslangic.Value = DateTime.Now.AddMinutes(-10);
         dtpBitis.Value = DateTime.Now.AddMinutes(10);
@@ -28,18 +50,26 @@ public partial class MainForm : Form
 
     private void MainForm_KeyDown(object? sender, KeyEventArgs e)
     {
-        if (!chkKeyDown.Checked || ParolaAlanindaMi())
+        // Tekrar takibi, olay türü kapalı olsa bile yapılır ki sonraki KeyPress doğru etiketlensin
+        bool tekrar = _tekrar.TusBasildi(e.KeyCode.ToString());
+
+        if (!chkKeyDown.Checked || ParolaAlanindaMi() || (tekrar && chkTekrarYoksay.Checked))
             return;
 
         string ayrinti = $"KeyCode={(int)e.KeyCode}";
         if (e.Modifiers != Keys.None)
             ayrinti = $"Değiştirici: {DegistiriciMetni(e.Modifiers)}  {ayrinti}";
+        if (!KarakterUretirMi(e.KeyCode, e.Modifiers))
+            ayrinti += "  · karakter üretmez → KeyPress olmaz";
 
-        _oturum.Ekle(OlayTuru.KeyDown, e.KeyCode.ToString(), ayrinti);
+        _sonKeyDownTusu = e.KeyCode.ToString();
+        _oturum.Ekle(OlayTuru.KeyDown, e.KeyCode.ToString(), ayrinti, tekrar);
     }
 
     private void MainForm_KeyUp(object? sender, KeyEventArgs e)
     {
+        _tekrar.TusBirakildi(e.KeyCode.ToString());
+
         if (!chkKeyUp.Checked || ParolaAlanindaMi())
             return;
         _oturum.Ekle(OlayTuru.KeyUp, e.KeyCode.ToString(), $"KeyCode={(int)e.KeyCode}");
@@ -47,10 +77,37 @@ public partial class MainForm : Form
 
     private void MainForm_KeyPress(object? sender, KeyPressEventArgs e)
     {
-        if (!chkKeyPress.Checked || ParolaAlanindaMi())
+        bool tekrar = _tekrar.SonBasimTekrar;
+        if (!chkKeyPress.Checked || ParolaAlanindaMi() || (tekrar && chkTekrarYoksay.Checked))
             return;
-        _oturum.Ekle(OlayTuru.KeyPress, KeyLogEntry.KarakterAdi(e.KeyChar), $"Karakter kodu=U+{(int)e.KeyChar:X4}");
+        string kaynak = _sonKeyDownTusu is null ? "" : $"  ← KeyDown: {_sonKeyDownTusu}";
+        _oturum.Ekle(OlayTuru.KeyPress, KeyLogEntry.KarakterAdi(e.KeyChar), $"Karakter kodu=U+{(int)e.KeyChar:X4}{kaynak}", tekrar);
     }
+
+    /// <summary>
+    /// Ok tuşları ve Tab normalde "iletişim kutusu tuşu" olarak Windows tarafından işlenir:
+    /// odak bir butondayken odağı başka kontrole taşırlar ve formun KeyDown olayına ulaşmazlar.
+    /// Kayıt açıkken her kontrolün PreviewKeyDown olayında bu tuşları "girdi tuşu" (IsInputKey)
+    /// olarak işaretleriz; böylece KeyDown / KeyUp her durumda oluşur ve listeye düşer.
+    /// Kayıt kapalıyken normal klavye ile gezinme davranışı korunur.
+    /// </summary>
+    private void GezinmeTuslariniYakala(Control ust)
+    {
+        foreach (Control kontrol in ust.Controls)
+        {
+            kontrol.PreviewKeyDown += Kontrol_PreviewKeyDown;
+            GezinmeTuslariniYakala(kontrol);
+        }
+    }
+
+    private void Kontrol_PreviewKeyDown(object? sender, PreviewKeyDownEventArgs e)
+    {
+        if (_oturum.KayitAcik && GezinmeTusuMu(e.KeyCode))
+            e.IsInputKey = true;
+    }
+
+    internal static bool GezinmeTusuMu(Keys tus) =>
+        tus is Keys.Tab or Keys.Up or Keys.Down or Keys.Left or Keys.Right;
 
     /// <summary>
     /// Güvenlik: Odaktaki kontrol bir parola alanıysa olay kaydedilmez.
@@ -67,6 +124,13 @@ public partial class MainForm : Form
         if (degistirici.HasFlag(Keys.Shift)) parcalar.Add("Shift");
         if (degistirici.HasFlag(Keys.Alt)) parcalar.Add("Alt");
         return string.Join("+", parcalar);
+    }
+
+    /// <summary>Ayrıntı sütunu, listenin kalan genişliğini doldursun (uzun açıklamalar kesilmesin).</summary>
+    private void AyrintiSutunuGenislet()
+    {
+        int digerleri = colZaman.Width + colOlay.Width + colTus.Width;
+        colAyrinti.Width = Math.Max(230, lvKayitlar.ClientSize.Width - digerleri - 4);
     }
 
     // ------------------------------------------------------------ Oturum olayları
@@ -89,8 +153,8 @@ public partial class MainForm : Form
         var oge = new ListViewItem(k.Zaman.ToString("dd.MM.yyyy HH:mm:ss.fff"));
         oge.SubItems.Add(k.Tur.ToString());
         oge.SubItems.Add(k.Tus);
-        oge.SubItems.Add(k.Ayrinti);
-        oge.ForeColor = k.Tur switch
+        oge.SubItems.Add(k.GorunenAyrinti);
+        oge.ForeColor = k.Tekrar ? Color.FromArgb(170, 120, 40) : k.Tur switch
         {
             OlayTuru.KeyDown => Color.FromArgb(0, 90, 170),
             OlayTuru.KeyUp => Color.FromArgb(110, 110, 110),
@@ -111,8 +175,8 @@ public partial class MainForm : Form
 
     private void IstatistikleriGuncelle()
     {
-        lblToplamTus.Text = $"Toplam tuş basımı (KeyDown): {_oturum.ToplamTusBasimi}";
-        lblOlaySayisi.Text = $"Kayıtlı olay: {_oturum.Kayitlar.Count} / {_oturum.Sinir}";
+        lblToplamTus.Text = $"Tuş basımı: {_oturum.ToplamTusBasimi}  (tekrar: {_oturum.TekrarSayisi})";
+        lblOlaySayisi.Text = $"Olay: {_oturum.Kayitlar.Count} / {_oturum.Sinir}  (kaydedilmemiş: {_oturum.KaydedilmemisOlaySayisi})";
 
         lstEnSik.BeginUpdate();
         lstEnSik.Items.Clear();
@@ -166,7 +230,15 @@ public partial class MainForm : Form
                 MessageBoxButtons.OK, MessageBoxIcon.Information);
             return;
         }
+        KayitlariKaydet();
+    }
 
+    /// <summary>
+    /// Kaydetme penceresini açar ve kayıtları yazar. Kayıt başarılıysa true döner
+    /// (kapatma onayında "Evet" seçildiğinde de kullanılır).
+    /// </summary>
+    private bool KayitlariKaydet()
+    {
         // Dosya penceresi açılırken yazılan tuşlar karışmasın diye kayıt durdurulur.
         _oturum.Durdur();
 
@@ -184,19 +256,46 @@ public partial class MainForm : Form
         if (dialog.ShowDialog(this) != DialogResult.OK)
         {
             DurumYaz("Kaydetme iptal edildi. Kayıt durdurulmuş durumda.");
-            return;
+            return false;
         }
 
         try
         {
             KayitDosyasi.Kaydet(kaydedilecek, dialog.FileName);
+            if (!_filtreAktif)
+                _oturum.KaydedildiOlarakIsaretle();   // Filtreli kayıtta bazı olaylar hâlâ yazılmamış olabilir
             DurumYaz($"{kaydedilecek.Count} olay kaydedildi: {dialog.FileName}");
+            IstatistikleriGuncelle();
+            return true;
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
             MessageBox.Show(this, $"Dosya yazılamadı:\n{ex.Message}\n\nKayıtlar bellekte korunuyor.",
                 "Kaydetme hatası", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            return false;
         }
+    }
+
+    // ------------------------------------------------------------ Kapatma
+
+    /// <summary>
+    /// Kaydedilmemiş olay varken pencere kapatılırsa kullanıcıya sorulur:
+    /// Evet → kaydet ve kapat, Hayır → kaydetmeden kapat, İptal → açık kal.
+    /// Kayıtlar yine de diske kendiliğinden yazılmaz; karar her zaman kullanıcınındır.
+    /// </summary>
+    private void MainForm_FormClosing(object? sender, FormClosingEventArgs e)
+    {
+        if (!_oturum.KaydedilmemisDegisiklikVar || e.CloseReason == CloseReason.WindowsShutDown)
+            return;
+
+        _oturum.Durdur();
+        var cevap = MessageBox.Show(this,
+            $"{_oturum.KaydedilmemisOlaySayisi} olay henüz dosyaya kaydedilmedi.\n\n" +
+            "Kapatmadan önce kaydetmek ister misiniz?",
+            "Kaydedilmemiş olaylar", MessageBoxButtons.YesNoCancel, MessageBoxIcon.Question);
+
+        if (cevap == DialogResult.Cancel || (cevap == DialogResult.Yes && !KayitlariKaydet()))
+            e.Cancel = true;
     }
 
     private void BtnFiltrele_Click(object? sender, EventArgs e)
@@ -244,6 +343,7 @@ public partial class MainForm : Form
     /// <summary>Pencere odağı kaybedince kayıt durur; geri gelince kullanıcı açıkça Başlat'a basmalıdır.</summary>
     private void MainForm_Deactivate(object? sender, EventArgs e)
     {
+        _tekrar.Sifirla();
         if (_oturum.KayitAcik)
         {
             _oturum.Durdur();
