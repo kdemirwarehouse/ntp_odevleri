@@ -106,7 +106,7 @@ namespace NotepadApp
             //
             mnuDisaAktar.Name = "mnuDisaAktar";
             mnuDisaAktar.ShortcutKeys = Keys.Control | Keys.E;
-            mnuDisaAktar.Text = "Notu .txt Olarak &Dışa Aktar...";
+            mnuDisaAktar.Text = "Notu &Dışa Aktar (.txt / .rtf / .html)...";
             mnuDisaAktar.Click += BtnDisaAktar_Click;
             //
             // mnuCikis
@@ -378,7 +378,7 @@ namespace NotepadApp
             btnDisaAktar.Name = "btnDisaAktar";
             btnDisaAktar.Padding = new Padding(8, 2, 8, 2);
             btnDisaAktar.TabIndex = 8;
-            btnDisaAktar.Text = ".txt Dışa Aktar";
+            btnDisaAktar.Text = "Dışa Aktar";
             btnDisaAktar.Click += BtnDisaAktar_Click;
             //
             // MainForm

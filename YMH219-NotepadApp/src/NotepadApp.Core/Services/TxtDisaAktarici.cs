@@ -16,6 +16,8 @@ public static class TxtDisaAktarici
         yazici.WriteLine(not.Baslik);
         yazici.WriteLine(new string('=', Math.Min(not.Baslik.Length, 60)));
         yazici.WriteLine($"Kategori      : {not.Kategori}");
+        if (not.Etiketler.Count > 0)
+            yazici.WriteLine($"Etiketler     : {not.EtiketMetni}");
         yazici.WriteLine($"Oluşturulma   : {not.OlusturmaTarihi:dd.MM.yyyy HH:mm}");
         yazici.WriteLine($"Son düzenleme : {not.DuzenlemeTarihi:dd.MM.yyyy HH:mm}");
         yazici.WriteLine();
