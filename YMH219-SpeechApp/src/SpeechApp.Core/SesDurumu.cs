@@ -10,6 +10,20 @@ public enum SesDurumu
     DosyaTaniniyor
 }
 
+/// <summary>Metin okuma motoru: klasik masaüstü SAPI (System.Speech) veya Windows 10+ OneCore (WinRT).</summary>
+public enum SesMotoru
+{
+    Sapi,
+    OneCore
+}
+
+/// <summary>Konuşma tanıma motoru: Windows SAPI (kurulu dil, genelde en-US) veya Vosk (çevrimdışı Türkçe model).</summary>
+public enum TanimaMotoru
+{
+    Sapi,
+    Vosk
+}
+
 public static class SesDurumuMetni
 {
     public static string Aciklama(this SesDurumu durum) => durum switch

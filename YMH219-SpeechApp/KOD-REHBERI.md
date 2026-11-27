@@ -25,6 +25,20 @@
 
 Tanıma olayları arka plan iş parçacığından gelir. Formda `UIdaCalistir(() => ...)` → `BeginInvoke` ile arayüz güncellenir.
 
+## Yeni eklenen motorlar (kod düzeyinde)
+
+- **OneCore TTS — `OneCoreSeslendirici.cs`:** proje hedefi `net8.0-windows10.0.19041.0` olduğu için WinRT API'leri doğrudan
+  kullanılır. `SpeechSynthesizer.SynthesizeTextToStreamAsync` (Options: `IncludeWordBoundaryMetadata`, `SpeakingRate`,
+  `AudioVolume`) → `MediaPlaybackItem` → `MediaPlayer`. Kelime sınırları `TimedMetadataTrack` ("SpeechWord") izlerinde
+  `SpeechCue` olarak gelir; `CueEntered` ile vurgulanır. Eski okumanın geç olayları `_surum` sayacıyla yok sayılır.
+- **Vosk — `VoskTaniyici.cs`:** `Model` statik olarak bir kez yüklenir. Mikrofon: NAudio `WaveInEvent` (16 kHz, 16 bit, mono),
+  her 100 ms'lik blok `AcceptWaveform`'a verilir; `true` dönerse `Result()` (tam cümle), değilse `PartialResult()`.
+  Dosya: `AudioFileReader` → `StereoToMono` → `WdlResampling(16000)` → `SampleToWaveProvider16`; dosya görevi kendi
+  `VoskRecognizer`'ını kullanır (Durdur ile aynı nesneye iki iş parçacığından erişilmesin).
+- **`VoskSonucu` (Core):** JSON'dan metin ve kelime `conf` ortalamasını çıkarır; PCM tamponundan 0-100 seviye hesaplar.
+- **`GurultuKapisi` (Core):** seviye < eşik olan blok `Array.Clear` ile sessizliğe çevrilir; eşik aşılınca 4 blok açık kalır.
+  `OnerilenEsik` en yüksek %10'u atıp ortalama·1,5 + 3 hesaplar.
+
 ## Olası küçük değişiklik soruları
 
 - *"Varsayılan hız 2 olsun"*: `MainForm_Load` içinde `_servis.Hiz = 2; trkHiz.Value = 2;`

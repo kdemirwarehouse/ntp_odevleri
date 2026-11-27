@@ -79,6 +79,54 @@ Test("Durum açıklamaları boş değildir", () =>
         Dogrula(!string.IsNullOrWhiteSpace(d.Aciklama()), $"{d} için açıklama yok");
 });
 
+Test("Gürültü kapısı: eşik altı blok sessizleşir, konuşma sonrası kuyrukta açık kalır", () =>
+{
+    var kapi = new GurultuKapisi { Esik = 20, KuyrukBlokSayisi = 2 };
+    byte[] Blok() => new byte[] { 1, 2, 3, 4 };
+    var b1 = Blok();
+    Dogrula(!kapi.Uygula(b1, 4, 5) && b1.All(x => x == 0), "Eşik altı blok sıfırlanmalı");
+    Dogrula(kapi.Uygula(Blok(), 4, 30), "Eşik üstü blok geçmeli");
+    Dogrula(kapi.Uygula(Blok(), 4, 5) && kapi.Uygula(Blok(), 4, 5), "Kuyruk süresince 2 blok geçmeli");
+    Dogrula(!kapi.Uygula(Blok(), 4, 5), "Kuyruk bitince kapanmalı");
+    Dogrula(new GurultuKapisi().Uygula(Blok(), 4, 0), "Eşik 0 iken kapı devre dışı olmalı");
+});
+
+Test("Önerilen gürültü eşiği: tepe değerler atılır, en fazla 60", () =>
+{
+    var olcum = Enumerable.Repeat(4, 18).Concat(new[] { 90, 95 }).ToList();   // 2 tık sesi
+    Dogrula(GurultuKapisi.OnerilenEsik(olcum) == 9, $"4*1.5+3=9 beklenirdi, {GurultuKapisi.OnerilenEsik(olcum)}");
+    Dogrula(GurultuKapisi.OnerilenEsik(Enumerable.Repeat(80, 10).ToList()) == 60, "Üst sınır 60 olmalı");
+    Dogrula(GurultuKapisi.OnerilenEsik(Array.Empty<int>()) == 0, "Ölçüm yoksa 0");
+});
+
+Test("Minimum güven çalışırken değiştirilebilir", () =>
+{
+    var g = new TanimaGecmisi(0.2f);
+    Dogrula(g.Ekle("az emin", 0.3f), "0.3 >= 0.2 eklenmeli");
+    g.MinimumGuven = 0.5f;
+    Dogrula(!g.Ekle("az emin", 0.3f), "Eşik 0.5 iken 0.3 eklenmemeli");
+});
+
+Test("Vosk tam sonucu: metin ve kelime güvenlerinin ortalaması", () =>
+{
+    var (metin, guven) = VoskSonucu.TamSonuc("{\"result\":[{\"conf\":1.0,\"word\":\"bugün\"},{\"conf\":0.5,\"word\":\"hava\"}],\"text\":\"bugün hava\"}");
+    Dogrula(metin == "bugün hava", "Metin okunmalı");
+    Dogrula(Math.Abs(guven - 0.75f) < 0.001f, $"Ortalama güven 0.75 olmalı, {guven}");
+    var (bos, _) = VoskSonucu.TamSonuc("{\"text\":\"\"}");
+    Dogrula(bos == "", "Boş sonuç boş metin vermeli");
+    Dogrula(VoskSonucu.TamSonuc("bozuk json").Guven == 0f, "Bozuk JSON güvenli şekilde ele alınmalı");
+});
+
+Test("Vosk ara sonucu ve PCM ses seviyesi", () =>
+{
+    Dogrula(VoskSonucu.AraSonuc("{\"partial\":\"merhaba dü\"}") == "merhaba dü", "Ara sonuç okunmalı");
+    var tampon = new byte[4];
+    BitConverter.GetBytes((short)16384).CopyTo(tampon, 0);
+    BitConverter.GetBytes((short)-32768).CopyTo(tampon, 2);
+    Dogrula(VoskSonucu.SesSeviyesi(tampon, 4) == 100, "En yüksek genlik 100 olmalı");
+    Dogrula(VoskSonucu.SesSeviyesi(tampon, 2) == 50, "Yarım genlik 50 olmalı");
+});
+
 Console.WriteLine();
 Console.WriteLine($"Sonuç: {basarili} başarılı, {basarisiz} başarısız");
 return basarisiz == 0 ? 0 : 1;

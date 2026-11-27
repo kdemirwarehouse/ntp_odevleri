@@ -18,15 +18,27 @@ public class TanimaGecmisi
 {
     private readonly List<TanimaKaydi> _kayitlar = new();
 
+    private float _minimumGuven;
+
     public TanimaGecmisi(float minimumGuven = 0.3f)
     {
-        if (minimumGuven is < 0f or > 1f)
-            throw new ArgumentOutOfRangeException(nameof(minimumGuven));
         MinimumGuven = minimumGuven;
     }
 
-    /// <summary>Bu değerin altındaki sonuçlar "emin değilim" olarak sayılır ve metne eklenmez.</summary>
-    public float MinimumGuven { get; }
+    /// <summary>
+    /// Bu değerin altındaki sonuçlar "emin değilim" olarak sayılır ve metne eklenmez.
+    /// Gürültülü ortamda yükseltilerek yanlış tanımalar ayıklanabilir (arayüzde kaydırıcı ile ayarlanır).
+    /// </summary>
+    public float MinimumGuven
+    {
+        get => _minimumGuven;
+        set
+        {
+            if (value is < 0f or > 1f)
+                throw new ArgumentOutOfRangeException(nameof(value));
+            _minimumGuven = value;
+        }
+    }
 
     public IReadOnlyList<TanimaKaydi> Kayitlar => _kayitlar;
 

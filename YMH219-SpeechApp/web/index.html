@@ -1,0 +1,208 @@
+<!doctype html>
+<html lang="tr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Speech-to-Text / Text-to-Speech — YMH219 Web Sürümü</title>
+<meta name="description" content="YMH219 SpeechApp'in tarayıcı sürümü: Web Speech API ile Türkçe metin okuma ve konuşma tanıma.">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect x='36' y='8' width='28' height='52' rx='14' fill='%23006ec8'/><path d='M24 46a26 26 0 0 0 52 0' fill='none' stroke='%23006ec8' stroke-width='7'/><rect x='46' y='72' width='8' height='14' fill='%23006ec8'/><rect x='32' y='86' width='36' height='7' rx='3' fill='%23006ec8'/></svg>">
+<style>
+  :root { --bg:#f4f5f7; --panel:#fff; --ink:#1f2328; --muted:#656d76; --line:#d0d7de; --hl:#ffd700; --acc:#006ec8; }
+  @media (prefers-color-scheme: dark) { :root { --bg:#0d1117; --panel:#161b22; --ink:#e6edf3; --muted:#8d96a0; --line:#30363d; --hl:#9e6a03; --acc:#58a6ff; } }
+  * { box-sizing:border-box; }
+  body { margin:0; font:14px/1.45 "Segoe UI", system-ui, -apple-system, sans-serif; background:var(--bg); color:var(--ink); }
+  #state { text-align:center; font-weight:700; font-size:16px; color:#fff; padding:9px; background:dimgray; }
+  main { max-width:1100px; margin:0 auto; padding:12px 14px 24px; display:flex; flex-direction:column; gap:12px; }
+  fieldset { border:1px solid var(--line); border-radius:8px; background:var(--panel); padding:10px 14px 14px; margin:0; }
+  legend { font-weight:600; padding:0 4px; }
+  .row { display:flex; flex-wrap:wrap; gap:10px 16px; align-items:center; margin:6px 0; }
+  select, button, input[type=range] { font:inherit; }
+  select, button { padding:5px 10px; border:1px solid var(--line); border-radius:6px; background:var(--panel); color:var(--ink); }
+  button { cursor:pointer; } button:disabled { opacity:.45; cursor:default; }
+  #text { min-height:120px; border:1px solid var(--line); border-radius:6px; padding:8px 10px; font-size:16px; outline:none; white-space:pre-wrap; }
+  #text:empty::before { content:attr(data-placeholder); color:var(--muted); }
+  mark { background:var(--hl); color:inherit; border-radius:3px; }
+  .grid { display:grid; grid-template-columns:1.2fr 1fr; gap:10px; }
+  @media (max-width:760px) { .grid { grid-template-columns:1fr; } }
+  #heard { min-height:160px; border:1px solid var(--line); border-radius:6px; padding:8px 10px; font-size:16px; white-space:pre-wrap; }
+  #interim { color:var(--muted); font-style:italic; }
+  table { width:100%; border-collapse:collapse; font-size:13px; }
+  th, td { text-align:left; padding:4px 6px; border-bottom:1px solid var(--line); }
+  .tablebox { border:1px solid var(--line); border-radius:6px; max-height:220px; overflow:auto; }
+  .note { color:var(--muted); font-size:12.5px; }
+  meter { width:120px; }
+  footer { text-align:center; color:var(--muted); font-size:12.5px; padding-bottom:16px; } footer a { color:var(--acc); }
+</style>
+</head>
+<body>
+<div id="state">Hazır</div>
+<main>
+  <fieldset>
+    <legend>Text-to-Speech — yazılan metni sesli oku</legend>
+    <div class="row">
+      <label>Ses: <select id="voice"></select></label>
+      <label>Hız: <span id="rateV">1,0</span> <input type="range" id="rate" min="0.5" max="2" step="0.1" value="1"></label>
+      <label>Ses düzeyi: <span id="volV">100</span> <input type="range" id="vol" min="0" max="1" step="0.05" value="1"></label>
+    </div>
+    <div id="text" contenteditable="true" spellcheck="false" data-placeholder="Okunacak metni buraya yazın…">Merhaba! Bu sayfa, Nesne Tabanlı Programlama dersi için hazırlanan konuşma uygulamasının web sürümüdür. Okunan kelime sarı renkle vurgulanır.</div>
+    <div class="row">
+      <button id="speak">▶ Oku (Başlat)</button>
+      <button id="pause" disabled>⏸ Duraklat</button>
+      <button id="stop" disabled>■ Durdur</button>
+      <button id="clearT">Temizle</button>
+    </div>
+  </fieldset>
+
+  <fieldset>
+    <legend>Speech-to-Text — mikrofondan konuşmayı metne çevir</legend>
+    <div class="row">
+      <label>Tanıma dili: <select id="lang">
+        <option value="tr-TR">Türkçe (tr-TR)</option><option value="en-US">English (en-US)</option>
+        <option value="de-DE">Deutsch (de-DE)</option><option value="fr-FR">Français (fr-FR)</option></select></label>
+      <label>Min. güven: <span id="minV">%20</span> <input type="range" id="min" min="0" max="90" step="5" value="20"></label>
+      <label>Mikrofon seviyesi: <meter id="level" min="0" max="100" value="0"></meter></label>
+    </div>
+    <div class="grid">
+      <div id="heard"><span id="final"></span> <span id="interim"></span></div>
+      <div class="tablebox"><table><thead><tr><th>Saat</th><th>Güven</th><th>Tanınan cümle</th></tr></thead><tbody id="rows"></tbody></table></div>
+    </div>
+    <div class="row">
+      <button id="listen">🎤 Dinlemeyi Başlat</button>
+      <button id="unlisten" disabled>■ Durdur</button>
+      <button id="clearS">Temizle</button>
+      <button id="save">.txt Olarak Kaydet</button>
+      <span id="info" class="note"></span>
+    </div>
+    <p class="note">Tarayıcı sürümü <code>SpeechRecognition</code> (Web Speech API) kullanır; Chrome ve Edge'de çalışır, Türkçe dahil
+      birçok dili destekler. Bu tarayıcılar tanıma için sesi kendi bulut servislerine gönderir. Tamamen çevrimdışı Türkçe tanıma için
+      masaüstü uygulamasındaki <b>Vosk</b> motoru kullanılabilir.</p>
+  </fieldset>
+</main>
+<footer>YMH219 SpeechApp (C# · System.Speech · OneCore · Vosk) tarayıcı sürümü — Abdulkadir Demir ·
+  <a href="https://github.com/kdemirwarehouse/YMH219-SpeechApp" target="_blank" rel="noopener">GitHub</a></footer>
+<script>
+"use strict";
+const $ = id => document.getElementById(id);
+const synth = window.speechSynthesis;
+const Rec = window.SpeechRecognition || window.webkitSpeechRecognition;
+let voices = [], utter = null, rec = null, listening = false, results = [], audio = null;
+const STATES = { idle: ["Hazır", "dimgray"], speak: ["🔊 Metin okunuyor (Text-to-Speech)", "#006ec8"], pause: ["⏸ Okuma duraklatıldı", "darkorange"], listen: ["🎤 Mikrofon dinleniyor (Speech-to-Text)", "#c82323"] };
+function state(s) {
+  $("state").textContent = STATES[s][0]; $("state").style.background = STATES[s][1];
+  const reading = s === "speak" || s === "pause";
+  $("pause").disabled = $("stop").disabled = !reading;
+  $("pause").textContent = s === "pause" ? "▶ Devam" : "⏸ Duraklat";
+  $("listen").disabled = s === "listen" || !Rec; $("unlisten").disabled = s !== "listen";
+}
+
+// ---------------- Text-to-Speech ----------------
+function loadVoices() {
+  if (!synth) return;
+  voices = synth.getVoices();
+  const sel = $("voice"), prev = sel.value;
+  sel.replaceChildren(...voices.map((v, i) => { const o = document.createElement("option"); o.value = i; o.textContent = `${v.name} (${v.lang})${v.localService ? "" : " — çevrimiçi"}`; return o; }));
+  const tr = voices.findIndex(v => v.lang.replace("_", "-").toLowerCase().startsWith("tr"));
+  sel.value = prev && voices[prev] ? prev : String(tr >= 0 ? tr : 0);
+}
+function plainText() { return $("text").innerText; }
+function highlight(start, len) {
+  const t = plainText();
+  if (start == null) { $("text").textContent = t; return; }
+  const esc = s => s.replace(/[&<>]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" })[c]);
+  $("text").innerHTML = esc(t.slice(0, start)) + "<mark>" + esc(t.slice(start, start + len)) + "</mark>" + esc(t.slice(start + len));
+}
+function speak() {
+  if (!synth) { alert("Bu tarayıcı konuşma sentezini desteklemiyor."); return; }
+  const t = plainText().trim();
+  if (!t) { alert("Okunacak metin yok. Lütfen metin kutusuna bir şeyler yazın."); return; }
+  if (listening) stopListening();
+  synth.cancel();
+  const text = plainText();
+  utter = new SpeechSynthesisUtterance(text);
+  const v = voices[+$("voice").value]; if (v) { utter.voice = v; utter.lang = v.lang; }
+  utter.rate = +$("rate").value; utter.volume = +$("vol").value;
+  utter.onstart = () => state("speak");
+  utter.onend = utter.onerror = () => { highlight(null); state(listening ? "listen" : "idle"); };
+  utter.onboundary = e => {
+    if (e.name && e.name !== "word") return;
+    const len = e.charLength || (text.slice(e.charIndex).match(/^\S+/) || [""])[0].length;
+    highlight(e.charIndex, len);
+  };
+  synth.speak(utter);
+}
+$("speak").onclick = speak;
+$("pause").onclick = () => { if (synth.paused) { synth.resume(); state("speak"); } else { synth.pause(); state("pause"); } };
+$("stop").onclick = () => { synth.cancel(); highlight(null); state("idle"); };
+$("clearT").onclick = () => { synth?.cancel(); $("text").textContent = ""; $("text").focus(); state("idle"); };
+$("rate").oninput = () => $("rateV").textContent = (+$("rate").value).toFixed(1).replace(".", ",");
+$("vol").oninput = () => $("volV").textContent = Math.round($("vol").value * 100);
+if (synth) { loadVoices(); synth.onvoiceschanged = loadVoices; }
+
+// ---------------- Speech-to-Text ----------------
+const pad = n => String(n).padStart(2, "0");
+const hms = d => `${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+function addResult(text, conf) {
+  const min = +$("min").value / 100;
+  if (conf > 0 && conf < min) { $("info").textContent = `Düşük güvenli sonuç atlandı: "${text}" (%${Math.round(conf * 100)})`; return; }
+  const r = { time: new Date(), text: text.trim(), conf: conf || 1 };
+  if (!r.text) return;
+  results.push(r);
+  $("final").textContent = results.map(x => x.text).join(" ");
+  const tr = document.createElement("tr");
+  for (const v of [hms(r.time), "%" + Math.round(r.conf * 100), r.text]) { const td = document.createElement("td"); td.textContent = v; tr.appendChild(td); }
+  $("rows").appendChild(tr); tr.scrollIntoView({ block: "nearest" });
+  $("info").textContent = `Ortalama güven: %${Math.round(results.reduce((a, b) => a + b.conf, 0) / results.length * 100)}`;
+}
+async function meterStart() {
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    const ctx = new AudioContext(), src = ctx.createMediaStreamSource(stream), an = ctx.createAnalyser();
+    an.fftSize = 512; src.connect(an);
+    const buf = new Uint8Array(an.fftSize);
+    audio = { stream, ctx, timer: setInterval(() => { an.getByteTimeDomainData(buf); let m = 0; for (const b of buf) m = Math.max(m, Math.abs(b - 128)); $("level").value = Math.min(100, m * 100 / 128); }, 100) };
+  } catch (e) {
+    throw new Error("Mikrofona erişilemedi. Tarayıcının adres çubuğundaki izin simgesinden mikrofon erişimine izin verin.");
+  }
+}
+function meterStop() { if (!audio) return; clearInterval(audio.timer); audio.stream.getTracks().forEach(t => t.stop()); audio.ctx.close(); audio = null; $("level").value = 0; }
+async function startListening() {
+  if (!Rec) { alert("Bu tarayıcı konuşma tanımayı desteklemiyor. Chrome veya Edge kullanın."); return; }
+  synth?.cancel();
+  try { await meterStart(); } catch (e) { alert(e.message); return; }
+  rec = new Rec(); rec.lang = $("lang").value; rec.continuous = true; rec.interimResults = true; rec.maxAlternatives = 1;
+  rec.onresult = e => {
+    let interim = "";
+    for (let i = e.resultIndex; i < e.results.length; i++) {
+      const r = e.results[i];
+      if (r.isFinal) addResult(r[0].transcript, r[0].confidence); else interim += r[0].transcript;
+    }
+    $("interim").textContent = interim ? "Duyulan: " + interim : "";
+  };
+  rec.onerror = e => {
+    const msg = { "not-allowed": "Mikrofon izni verilmedi.", "no-speech": "Konuşma algılanmadı.", "network": "Tanıma servisine ulaşılamadı (internet bağlantısı gerekli).", "audio-capture": "Mikrofon bulunamadı." }[e.error];
+    if (e.error !== "no-speech" && e.error !== "aborted") { alert(msg || ("Konuşma tanıma hatası: " + e.error)); stopListening(); }
+  };
+  rec.onend = () => { if (listening) { try { rec.start(); } catch { } } };   // tarayıcı sessizlikte kapatırsa sürdür
+  listening = true; rec.start(); state("listen");
+}
+function stopListening() { listening = false; try { rec?.stop(); } catch { } rec = null; meterStop(); $("interim").textContent = ""; state("idle"); }
+$("listen").onclick = startListening;
+$("unlisten").onclick = stopListening;
+$("min").oninput = () => $("minV").textContent = "%" + $("min").value;
+$("clearS").onclick = () => { results = []; $("final").textContent = ""; $("interim").textContent = ""; $("rows").replaceChildren(); $("info").textContent = ""; };
+$("save").onclick = () => {
+  if (!results.length) { alert("Kaydedilecek tanıma sonucu yok."); return; }
+  const d = new Date();
+  const lines = ["# YMH219 SpeechApp (web) - konuşma tanıma sonuçları", `# ${d.toLocaleString("tr-TR")}, ${results.length} cümle`,
+    ...results.map(r => `[${hms(r.time)}] (${Math.round(r.conf * 100)}%) ${r.text}`), "", results.map(r => r.text).join(" ")];
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(new Blob(["﻿" + lines.join("\r\n") + "\r\n"], { type: "text/plain;charset=utf-8" }));
+  a.download = `konusma-${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}-${pad(d.getHours())}${pad(d.getMinutes())}${pad(d.getSeconds())}.txt`;
+  a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+};
+if (!Rec) $("info").textContent = "Bu tarayıcı konuşma tanımayı desteklemiyor (Chrome / Edge önerilir).";
+if (!synth) $("speak").disabled = true;
+state("idle");
+</script>
+</body>
+</html>

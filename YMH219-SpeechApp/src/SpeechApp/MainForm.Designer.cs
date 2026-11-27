@@ -44,9 +44,17 @@ namespace SpeechApp
             colMetin = new ColumnHeader();
             pnlSttBilgi = new FlowLayoutPanel();
             lblDil = new Label();
+            lblMotor = new Label();
+            cmbMotor = new ComboBox();
             lblSeviye = new Label();
             pbSeviye = new ProgressBar();
             lblTahmin = new Label();
+            pnlSttAyar = new FlowLayoutPanel();
+            lblMinGuven = new Label();
+            trkMinGuven = new TrackBar();
+            lblGurultu = new Label();
+            trkGurultu = new TrackBar();
+            btnGurultuOlc = new Button();
             pnlSttButon = new FlowLayoutPanel();
             btnDinle = new Button();
             btnDinlemeDurdur = new Button();
@@ -123,7 +131,7 @@ namespace SpeechApp
             cmbSes.DropDownStyle = ComboBoxStyle.DropDownList;
             cmbSes.Margin = new Padding(3, 6, 16, 3);
             cmbSes.Name = "cmbSes";
-            cmbSes.Size = new Size(260, 23);
+            cmbSes.Size = new Size(330, 23);
             cmbSes.SelectedIndexChanged += CmbSes_SelectedIndexChanged;
             //
             // lblHiz
@@ -200,7 +208,47 @@ namespace SpeechApp
             //
             grpStt.Controls.Add(splitStt);
             grpStt.Controls.Add(pnlSttButon);
+            grpStt.Controls.Add(pnlSttAyar);
             grpStt.Controls.Add(pnlSttBilgi);
+            //
+            // pnlSttAyar: doğruluk ayarları
+            //
+            pnlSttAyar.AutoSize = true;
+            pnlSttAyar.Dock = DockStyle.Top;
+            pnlSttAyar.Name = "pnlSttAyar";
+            pnlSttAyar.Controls.Add(lblMinGuven);
+            pnlSttAyar.Controls.Add(trkMinGuven);
+            pnlSttAyar.Controls.Add(lblGurultu);
+            pnlSttAyar.Controls.Add(trkGurultu);
+            pnlSttAyar.Controls.Add(btnGurultuOlc);
+            lblMinGuven.AutoSize = true;
+            lblMinGuven.Margin = new Padding(3, 9, 3, 0);
+            lblMinGuven.Name = "lblMinGuven";
+            lblMinGuven.Text = "Min. güven: %20";
+            trkMinGuven.AutoSize = false;
+            trkMinGuven.Maximum = 90;
+            trkMinGuven.TickFrequency = 10;
+            trkMinGuven.SmallChange = 5;
+            trkMinGuven.LargeChange = 10;
+            trkMinGuven.Value = 20;
+            trkMinGuven.Size = new Size(150, 32);
+            trkMinGuven.Name = "trkMinGuven";
+            trkMinGuven.Scroll += TrkMinGuven_Scroll;
+            lblGurultu.AutoSize = true;
+            lblGurultu.Margin = new Padding(16, 9, 3, 0);
+            lblGurultu.Name = "lblGurultu";
+            lblGurultu.Text = "Gürültü eşiği (Vosk): kapalı";
+            trkGurultu.AutoSize = false;
+            trkGurultu.Maximum = 60;
+            trkGurultu.TickFrequency = 10;
+            trkGurultu.Size = new Size(150, 32);
+            trkGurultu.Name = "trkGurultu";
+            trkGurultu.Scroll += TrkGurultu_Scroll;
+            btnGurultuOlc.AutoSize = true;
+            btnGurultuOlc.Margin = new Padding(8, 4, 3, 3);
+            btnGurultuOlc.Name = "btnGurultuOlc";
+            btnGurultuOlc.Text = "Ortam Gürültüsünü Ölç";
+            btnGurultuOlc.Click += BtnGurultuOlc_Click;
             grpStt.Dock = DockStyle.Fill;
             grpStt.Name = "grpStt";
             grpStt.Padding = new Padding(8);
@@ -241,6 +289,8 @@ namespace SpeechApp
             // pnlSttBilgi
             //
             pnlSttBilgi.AutoSize = true;
+            pnlSttBilgi.Controls.Add(lblMotor);
+            pnlSttBilgi.Controls.Add(cmbMotor);
             pnlSttBilgi.Controls.Add(lblDil);
             pnlSttBilgi.Controls.Add(lblSeviye);
             pnlSttBilgi.Controls.Add(pbSeviye);
@@ -250,6 +300,16 @@ namespace SpeechApp
             //
             // lblDil
             //
+            lblMotor.AutoSize = true;
+            lblMotor.Margin = new Padding(3, 6, 3, 6);
+            lblMotor.Name = "lblMotor";
+            lblMotor.Text = "Motor:";
+            cmbMotor.DropDownStyle = ComboBoxStyle.DropDownList;
+            cmbMotor.Margin = new Padding(3, 2, 16, 3);
+            cmbMotor.Name = "cmbMotor";
+            cmbMotor.Size = new Size(250, 23);
+            cmbMotor.Items.AddRange(new object[] { "Windows SAPI (kurulu dil)", "Vosk — Türkçe (çevrimdışı)" });
+            cmbMotor.SelectedIndexChanged += CmbMotor_SelectedIndexChanged;
             lblDil.AutoSize = true;
             lblDil.Margin = new Padding(3, 6, 16, 6);
             lblDil.Name = "lblDil";
@@ -382,9 +442,17 @@ namespace SpeechApp
         private ColumnHeader colMetin;
         private FlowLayoutPanel pnlSttBilgi;
         private Label lblDil;
+        private Label lblMotor;
+        private ComboBox cmbMotor;
         private Label lblSeviye;
         private ProgressBar pbSeviye;
         private Label lblTahmin;
+        private FlowLayoutPanel pnlSttAyar;
+        private Label lblMinGuven;
+        private TrackBar trkMinGuven;
+        private Label lblGurultu;
+        private TrackBar trkGurultu;
+        private Button btnGurultuOlc;
         private FlowLayoutPanel pnlSttButon;
         private Button btnDinle;
         private Button btnDinlemeDurdur;

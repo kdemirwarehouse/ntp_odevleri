@@ -41,9 +41,9 @@ public partial class MainForm : Form
 
         // Ses listesi
         var sesler = _servis.Sesler();
-        cmbSes.Items.AddRange(sesler.ToArray());
+        cmbSes.Items.AddRange(sesler.Select(s => (object)s.ToString()).ToArray());
         if (sesler.Count > 0)
-            cmbSes.SelectedIndex = 0;
+            cmbSes.SelectedIndex = Math.Max(0, _servis.VarsayilanSesIndeksi("tr-TR"));   // Türkçe ses varsa onu seç (yoksa en-US)
         else
         {
             cmbSes.Items.Add("(kurulu ses yok)");
@@ -61,6 +61,12 @@ public partial class MainForm : Form
             : $"Tanıma dili: {DilSecici.GorunenAd(dil)}";
         if (dil is null)
             lblDil.ForeColor = Color.Firebrick;
+
+        // Türkçe model daha önce indirildiyse Vosk varsayılan olsun
+        _motorDegisiyor = true;
+        cmbMotor.SelectedIndex = VoskTaniyici.ModelKurulu ? 1 : 0;
+        _motorDegisiyor = false;
+        MotoruUygula();
 
         splitStt.SplitterDistance = splitStt.Width * 55 / 100;
         DurumGoster(SesDurumu.Hazir);
@@ -135,6 +141,106 @@ public partial class MainForm : Form
 
     // ------------------------------------------------------------ Speech-to-Text
 
+    private bool _motorDegisiyor;
+
+    /// <summary>Komut satırından: --motor vosk</summary>
+    public void MotorSec(TanimaMotoru motor) => cmbMotor.SelectedIndex = (int)motor;
+
+    private async void CmbMotor_SelectedIndexChanged(object? sender, EventArgs e)
+    {
+        if (_motorDegisiyor || _servis is null)
+            return;
+        if (cmbMotor.SelectedIndex == (int)TanimaMotoru.Vosk && !VoskTaniyici.ModelKurulu)
+        {
+            var cevap = MessageBox.Show(this,
+                "Türkçe tanıma için Vosk Türkçe modeli (~35 MB) bir kez indirilecek.\n" +
+                $"Kaynak: {VoskTaniyici.ModelAdresi}\nKonum: {VoskTaniyici.ModelKlasoru}\n\n" +
+                "İndirme tamamlandıktan sonra tanıma tamamen çevrimdışı çalışır. Devam edilsin mi?",
+                "Türkçe model gerekli", MessageBoxButtons.YesNo, MessageBoxIcon.Question);
+            if (cevap != DialogResult.Yes || !await ModeliIndirAsync())
+            {
+                _motorDegisiyor = true;
+                cmbMotor.SelectedIndex = (int)TanimaMotoru.Sapi;
+                _motorDegisiyor = false;
+            }
+        }
+        MotoruUygula();
+    }
+
+    private async Task<bool> ModeliIndirAsync()
+    {
+        grpStt.Enabled = false;
+        try
+        {
+            var ilerleme = new Progress<int>(y => { lblTahmin.Text = $"Türkçe model indiriliyor... %{y}"; lblDurumAlt.Text = lblTahmin.Text; });
+            await VoskTaniyici.ModelIndirAsync(ilerleme);
+            lblTahmin.Text = "Türkçe model hazır.";
+            return true;
+        }
+        catch (Exception ex) when (ex is HttpRequestException or IOException or InvalidDataException or TaskCanceledException or UnauthorizedAccessException)
+        {
+            MessageBox.Show(this, "Model indirilemedi. İnternet bağlantınızı kontrol edin.\n\nAyrıntı: " + ex.Message,
+                "İndirme hatası", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            lblTahmin.Text = "";
+            return false;
+        }
+        finally { grpStt.Enabled = true; }
+    }
+
+    private void TrkMinGuven_Scroll(object? sender, EventArgs e)
+    {
+        _gecmis.MinimumGuven = trkMinGuven.Value / 100f;
+        lblMinGuven.Text = $"Min. güven: %{trkMinGuven.Value}";
+    }
+
+    private void TrkGurultu_Scroll(object? sender, EventArgs e)
+    {
+        if (_servis is not null) _servis.GurultuEsigi = trkGurultu.Value;
+        lblGurultu.Text = trkGurultu.Value == 0 ? "Gürültü eşiği (Vosk): kapalı" : $"Gürültü eşiği (Vosk): {trkGurultu.Value}";
+    }
+
+    /// <summary>Kullanıcı susarken 2 sn ortam sesi ölçülür ve gürültü eşiği buna göre önerilip uygulanır.</summary>
+    private async void BtnGurultuOlc_Click(object? sender, EventArgs e)
+    {
+        if (_servis is null) return;
+        _servis.DinlemeyiDurdur();
+        btnGurultuOlc.Enabled = false;
+        lblTahmin.Text = "Ortam gürültüsü ölçülüyor... lütfen 2 saniye konuşmayın.";
+        try
+        {
+            var seviyeler = await VoskTaniyici.OrtamGurultusunuOlcAsync(TimeSpan.FromSeconds(2));
+            int esik = GurultuKapisi.OnerilenEsik(seviyeler);
+            trkGurultu.Value = Math.Clamp(esik, trkGurultu.Minimum, trkGurultu.Maximum);
+            TrkGurultu_Scroll(null, EventArgs.Empty);
+            lblTahmin.Text = $"Ortalama ortam seviyesi ölçüldü; gürültü eşiği {trkGurultu.Value} olarak ayarlandı.";
+        }
+        catch (InvalidOperationException ex)
+        {
+            MessageBox.Show(this, ex.Message, "Ölçülemedi", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            lblTahmin.Text = "";
+        }
+        finally { btnGurultuOlc.Enabled = true; }
+    }
+
+    private void MotoruUygula()
+    {
+        if (_servis is null) return;
+        _servis.DinlemeyiDurdur();
+        _servis.Motor = (TanimaMotoru)Math.Max(0, cmbMotor.SelectedIndex);
+        trkGurultu.Enabled = btnGurultuOlc.Enabled = _servis.Motor == TanimaMotoru.Vosk;
+        if (_servis.Motor == TanimaMotoru.Vosk)
+        {
+            lblDil.Text = "Tanıma dili: Türkçe (tr-TR) — Vosk";
+            lblDil.ForeColor = SystemColors.ControlText;
+        }
+        else
+        {
+            string? dil = DilSecici.EnUygun(KonusmaServisi.KuruluTaniyicilar(), System.Globalization.CultureInfo.CurrentUICulture.Name);
+            lblDil.Text = dil is null ? "Tanıma dili: kurulu tanıyıcı yok!" : $"Tanıma dili: {DilSecici.GorunenAd(dil)}";
+            lblDil.ForeColor = dil is null ? Color.Firebrick : SystemColors.ControlText;
+        }
+    }
+
     private void BtnDinle_Click(object? sender, EventArgs e)
     {
         try
@@ -152,7 +258,13 @@ public partial class MainForm : Form
 
     private void BtnDosyadanTani_Click(object? sender, EventArgs e)
     {
-        using var dialog = new OpenFileDialog { Filter = "WAV ses dosyası (*.wav)|*.wav", Title = "Metne çevrilecek ses dosyası" };
+        using var dialog = new OpenFileDialog
+        {
+            Filter = _servis?.Motor == TanimaMotoru.Vosk
+                ? "Ses dosyaları (*.wav;*.mp3)|*.wav;*.mp3"
+                : "WAV ses dosyası (*.wav)|*.wav",
+            Title = "Metne çevrilecek ses dosyası"
+        };
         if (dialog.ShowDialog(this) != DialogResult.OK)
             return;
         DosyadanTani(dialog.FileName);

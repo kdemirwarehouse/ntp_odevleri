@@ -5,12 +5,16 @@
   </ItemGroup>
 
   <ItemGroup>
+    <PackageReference Include="NAudio" Version="2.2.1" />
     <PackageReference Include="System.Speech" Version="8.0.0" />
+    <PackageReference Include="Vosk" Version="0.3.38" />
   </ItemGroup>
 
   <PropertyGroup>
     <OutputType>WinExe</OutputType>
-    <TargetFramework>net8.0-windows</TargetFramework>
+    <!-- Windows 10 SDK hedefi: OneCore (Windows.Media.SpeechSynthesis) WinRT API'leri için -->
+    <TargetFramework>net8.0-windows10.0.19041.0</TargetFramework>
+    <SupportedOSPlatformVersion>10.0.17763.0</SupportedOSPlatformVersion>
     <Nullable>enable</Nullable>
     <UseWindowsForms>true</UseWindowsForms>
     <ImplicitUsings>enable</ImplicitUsings>
